@@ -1,0 +1,32 @@
+*.iml
+.gradle/
+.idea/
+.DS_Store
+.kotlin/
+
+# Build outputs in any module, not just the root. A bare /build misses app/build,
+# core/*/build and lib/*/build, which is 700-odd files of compiler cache.
+build/
+/captures
+.externalNativeBuild
+.cxx
+
+# Local machine config (SDK path)
+local.properties
+
+# Never commit signing material. The release key lives outside this repo, in Actions
+# secrets, and in a private backup repo — these patterns are the safety net against a
+# stray local copy.
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# Secrets and local env
+.env
+.env.*
+
+# Logs and local agent scratch (worktrees, session files)
+*.log
+.claude/
+/dev/active

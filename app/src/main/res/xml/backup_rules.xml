@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Practice history survives a factory reset via Auto Backup. WAL/SHM are excluded:
+     backing up a write-ahead log without its database restores a corrupt pair. -->
+<full-backup-content>
+    <include domain="database" path="primavista.db" />
+    <exclude domain="database" path="primavista.db-wal" />
+    <exclude domain="database" path="primavista.db-shm" />
+</full-backup-content>

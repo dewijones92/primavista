@@ -1,0 +1,128 @@
+{
+  "accidentalDoubleFlat": {
+    "codepoint": "U+E264"
+  },
+  "accidentalDoubleSharp": {
+    "codepoint": "U+E263"
+  },
+  "accidentalFlat": {
+    "codepoint": "U+E260"
+  },
+  "accidentalNatural": {
+    "codepoint": "U+E261"
+  },
+  "accidentalSharp": {
+    "codepoint": "U+E262"
+  },
+  "augmentationDot": {
+    "codepoint": "U+E1E7"
+  },
+  "barlineDouble": {
+    "codepoint": "U+E031"
+  },
+  "barlineFinal": {
+    "codepoint": "U+E032"
+  },
+  "barlineSingle": {
+    "codepoint": "U+E030"
+  },
+  "brace": {
+    "codepoint": "U+E000"
+  },
+  "cClef": {
+    "codepoint": "U+E05C"
+  },
+  "fClef": {
+    "codepoint": "U+E062"
+  },
+  "flag16thDown": {
+    "codepoint": "U+E243"
+  },
+  "flag16thUp": {
+    "codepoint": "U+E242"
+  },
+  "flag32ndDown": {
+    "codepoint": "U+E245"
+  },
+  "flag32ndUp": {
+    "codepoint": "U+E244"
+  },
+  "flag8thDown": {
+    "codepoint": "U+E241"
+  },
+  "flag8thUp": {
+    "codepoint": "U+E240"
+  },
+  "gClef": {
+    "codepoint": "U+E050"
+  },
+  "noteheadBlack": {
+    "codepoint": "U+E0A4"
+  },
+  "noteheadDoubleWhole": {
+    "codepoint": "U+E0A0"
+  },
+  "noteheadHalf": {
+    "codepoint": "U+E0A3"
+  },
+  "noteheadWhole": {
+    "codepoint": "U+E0A2"
+  },
+  "rest16th": {
+    "codepoint": "U+E4E7"
+  },
+  "rest32nd": {
+    "codepoint": "U+E4E8"
+  },
+  "rest8th": {
+    "codepoint": "U+E4E6"
+  },
+  "restDoubleWhole": {
+    "codepoint": "U+E4E2"
+  },
+  "restHalf": {
+    "codepoint": "U+E4E4"
+  },
+  "restQuarter": {
+    "codepoint": "U+E4E5"
+  },
+  "restWhole": {
+    "codepoint": "U+E4E3"
+  },
+  "timeSig0": {
+    "codepoint": "U+E080"
+  },
+  "timeSig1": {
+    "codepoint": "U+E081"
+  },
+  "timeSig2": {
+    "codepoint": "U+E082"
+  },
+  "timeSig3": {
+    "codepoint": "U+E083"
+  },
+  "timeSig4": {
+    "codepoint": "U+E084"
+  },
+  "timeSig5": {
+    "codepoint": "U+E085"
+  },
+  "timeSig6": {
+    "codepoint": "U+E086"
+  },
+  "timeSig7": {
+    "codepoint": "U+E087"
+  },
+  "timeSig8": {
+    "codepoint": "U+E088"
+  },
+  "timeSig9": {
+    "codepoint": "U+E089"
+  },
+  "timeSigCommon": {
+    "codepoint": "U+E08A"
+  },
+  "timeSigCutCommon": {
+    "codepoint": "U+E08B"
+  }
+}

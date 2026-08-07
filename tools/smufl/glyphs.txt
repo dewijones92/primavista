@@ -1,0 +1,69 @@
+# The SMuFL glyphs this app draws. One name per line, blank lines and # comments ignored.
+#
+# This is the single list. `trim-metadata.py` reads it to produce the shipped
+# app/src/main/assets/smufl/glyphnames.json, and a unit test asserts the SmuflGlyph enum's
+# names are exactly the keys of that file — so a glyph cannot be added to the code without
+# appearing here, or shipped here without the code using it.
+#
+# Everything not in this list is drawn geometrically rather than as a glyph: staff lines,
+# leger lines, stems, beams, ties, slurs and the playhead are all lines and curves.
+
+# Clefs
+gClef
+fClef
+cClef
+
+# Noteheads
+noteheadDoubleWhole
+noteheadWhole
+noteheadHalf
+noteheadBlack
+
+# Rests
+restDoubleWhole
+restWhole
+restHalf
+restQuarter
+rest8th
+rest16th
+rest32nd
+
+# Flags (unbeamed stems)
+flag8thUp
+flag8thDown
+flag16thUp
+flag16thDown
+flag32ndUp
+flag32ndDown
+
+# Accidentals
+accidentalDoubleFlat
+accidentalFlat
+accidentalNatural
+accidentalSharp
+accidentalDoubleSharp
+
+# Duration dots
+augmentationDot
+
+# Barlines
+barlineSingle
+barlineDouble
+barlineFinal
+
+# Grand staff
+brace
+
+# Time signatures
+timeSig0
+timeSig1
+timeSig2
+timeSig3
+timeSig4
+timeSig5
+timeSig6
+timeSig7
+timeSig8
+timeSig9
+timeSigCommon
+timeSigCutCommon

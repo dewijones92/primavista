@@ -1,0 +1,34 @@
+# Overrides on top of detekt's default config (buildUponDefaultConfig = true).
+
+naming:
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']
+
+complexity:
+  TooManyFunctions:
+    # A cohesive parser or layout engine legitimately gathers many small private helpers.
+    thresholdInFiles: 20
+  LongParameterList:
+    ignoreDefaultParameters: true
+    ignoreAnnotated: ['Composable']
+  LongMethod:
+    # Staff layout and MusicXML element handling are long straight-line functions by
+    # nature; splitting them for the metric alone would hurt readability.
+    threshold: 80
+
+style:
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview']
+  ReturnCount:
+    max: 5
+    excludeGuardClauses: true
+  MagicNumber:
+    # Music has real constants: 12 semitones, 5 staff lines, 7 letter names, 440Hz.
+    # Named declarations carry their own meaning.
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotated: ['Composable']
+
+formatting:
+  active: true
+  android: true
