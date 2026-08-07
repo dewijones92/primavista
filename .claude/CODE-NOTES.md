@@ -1129,3 +1129,19 @@ Agents implementing a module append their own `##` section and never rewrite ano
   fields are what turn "PLAY IT refused" into a claim that can be argued with, and they are read
   from the same `Score.polyphony` the refusal gate uses, so the log cannot disagree with the
   decision it is explaining.
+
+- **The judge is begun in `start()`, not in `load()`, and that ordering is load-bearing.** A
+  `TempoConductor` that has not started yet has its single leg at `TempoLeg(0, 0)`, so
+  `timingSnapshot()` returns a map whose origin is nanotime zero. Snapshotting at load time
+  therefore converted every input's absolute timestamp into a position hours into the piece: on the
+  emulator a tap at uptime 29,542 s landed at tick 555,868,801 in a 120,960-tick score, and every
+  note was judged `Missed` while every tap became an `Extra`. Found on-device on 2026-08-07 by the
+  diagnostics report, which is the whole argument for the report existing — the unit tests all
+  passed, because in a test the conductor is always started before anything is judged.
+
+- **A resume after a pause appends a leg the already-begun judge cannot see.** `timingSnapshot()`
+  returns the legs as they stand, and `JudgeState` holds the one taken at `start()`. So notes played
+  after a mid-session resume are currently measured against the pre-pause map and read late by the
+  length of the pause. It is recorded in `docs/todos/` rather than silently accepted; the fix is a
+  `retime(state, timing)` on `PerformanceJudge`, which keeps the fold's progress while swapping the
+  map, and it needs a contract change so it is not being smuggled in here.

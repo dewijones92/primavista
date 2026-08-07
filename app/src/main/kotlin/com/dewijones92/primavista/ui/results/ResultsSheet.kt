@@ -101,10 +101,18 @@ public fun ResultsSheet(
 
         Spacer(Modifier.height(22.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Button(onClick = onPractiseWeakest, enabled = weakest.isNotEmpty()) {
-                Text("Drill the weakest")
-            }
+        Button(
+            onClick = onPractiseWeakest,
+            enabled = weakest.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Drill the weakest")
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+        ) {
             TextButton(onClick = onAgain) { Text("Again") }
             TextButton(onClick = onDone) { Text("Done") }
         }

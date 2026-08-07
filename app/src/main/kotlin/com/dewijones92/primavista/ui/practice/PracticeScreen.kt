@@ -133,8 +133,11 @@ private fun ScrollingStaff(state: PracticeUiState, metrics: GlyphMetrics) {
             return@Card
         }
 
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val staffSpace = (maxHeight.value / system.height.value.toFloat().coerceAtLeast(1f))
+        BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // The staff is capped at MAX_STAFF_SPACE_DP so it never becomes cartoonishly large on a
+            // tall screen — which leaves slack, and slack has to be shared above and below rather
+            // than all falling under the staff.
+            val staffSpace = (maxHeight.value / (system.height.value.toFloat() + STAFF_MARGIN_SPACES))
                 .coerceIn(MIN_STAFF_SPACE_DP, MAX_STAFF_SPACE_DP)
             val viewportSpaces = maxWidth.value / staffSpace
             val playhead = state.playheadX.value
@@ -143,7 +146,10 @@ private fun ScrollingStaff(state: PracticeUiState, metrics: GlyphMetrics) {
             StaffCanvas(
                 system = system,
                 metrics = metrics,
-                modifier = Modifier.fillMaxSize().testTag("staff"),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height((system.height.value.toFloat() + STAFF_MARGIN_SPACES).times(staffSpace).dp)
+                    .testTag("staff"),
                 staffSpace = staffSpace.dp,
                 scrollX = StaffSpaces(scroll),
                 playheadX = state.playheadX,
@@ -340,6 +346,7 @@ private fun RefusalDialog(reason: RefusalReason, onDismiss: () -> Unit) {
 }
 
 private const val PLAYHEAD_SCREEN_FRACTION = 0.28
+private const val STAFF_MARGIN_SPACES = 3f
 private const val MIN_STAFF_SPACE_DP = 4f
 private const val MAX_STAFF_SPACE_DP = 13f
 private const val KEYBOARD_LOWEST = 48

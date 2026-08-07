@@ -95,9 +95,10 @@ public class PracticeViewModel(
 
         val system = layout.layout(score, metrics)
         val conductor = conductorFor(score).also { this.conductor = it }
-        // The judge gets an immutable snapshot, never the live transport: handing it the running
-        // Conductor made a paused session re-judge differently from a report of itself.
-        judgeState = judge.begin(score, conductor.timingSnapshot())
+        // The judge is begun in start(), NOT here: a Conductor that has not started yet has its
+        // origin at nanotime zero, so a snapshot taken now maps every input to a position hours
+        // into the piece. See .claude/CODE-NOTES.md.
+        judgeState = null
 
         diag.event(
             "practice",
@@ -133,8 +134,15 @@ public class PracticeViewModel(
 
     public fun start() {
         val conductor = conductor ?: return
+        val (score, _, judge) = loaded ?: return
         conductor.start()
-        diag.event("practice", "start tempo=${conductor.tempoBpm} countIn=${conductor.countInBeatsRemaining()}")
+        // Snapshot AFTER starting, so the timing map carries the real origin.
+        judgeState = judge.begin(score, conductor.timingSnapshot())
+        diag.event(
+            "practice",
+            "start tempo=${conductor.tempoBpm} countIn=${conductor.countInBeatsRemaining()} " +
+                "origin=${conductor.nanosFor(Ticks.ZERO)}ns",
+        )
         _state.value = _state.value.copy(transport = conductor.state)
     }
 

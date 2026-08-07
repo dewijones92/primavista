@@ -1,6 +1,7 @@
 package com.dewijones92.primavista.ui.practice
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -59,6 +60,7 @@ public fun PianoKeyboard(
                     onKeyPressed = onKeyPressed,
                     faceColor = notation.paper,
                     labelColor = notation.ink,
+                    edgeColor = MaterialTheme.colorScheme.outlineVariant,
                 )
             }
             // Drawn after the naturals so they win the hit test where they overlap, which is what
@@ -75,6 +77,7 @@ public fun PianoKeyboard(
                         onKeyPressed = onKeyPressed,
                         faceColor = notation.ink,
                         labelColor = notation.paper,
+                        edgeColor = MaterialTheme.colorScheme.outline,
                     )
                 }
             }
@@ -92,6 +95,7 @@ private fun PianoKey(
     onKeyPressed: (Midi, Long) -> Unit,
     faceColor: Color,
     labelColor: Color,
+    edgeColor: Color,
 ) {
     var pressed by remember { mutableStateOf(false) }
     val highlight = MaterialTheme.colorScheme.primary
@@ -103,6 +107,13 @@ private fun PianoKey(
             .fillMaxHeight(heightFraction)
             .clip(RoundedCornerShape(bottomStart = KEY_CORNER, bottomEnd = KEY_CORNER))
             .background(if (pressed) highlight else faceColor)
+            // Without an edge the naturals read as one undivided slab with the sharps floating on
+            // it, and there is no way to see which key a finger is over.
+            .border(
+                width = KEY_EDGE,
+                color = edgeColor,
+                shape = RoundedCornerShape(bottomStart = KEY_CORNER, bottomEnd = KEY_CORNER),
+            )
             .testTag("key-${midi.number}")
             .pointerInput(midi) {
                 awaitPointerEventScope {
@@ -162,3 +173,4 @@ private const val BLACK_KEY_HEIGHT_FRACTION = 0.62f
 private const val MIDDLE_C_LABEL_ALPHA = 0.55f
 private const val NANOS_PER_MILLI = 1_000_000L
 private val KEY_CORNER = 5.dp
+private val KEY_EDGE = 1.dp
