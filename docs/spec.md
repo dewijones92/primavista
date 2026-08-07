@@ -57,7 +57,12 @@ whole class of playback bugs came from time being read in more than one place.
 component keeps its own idea of "now", and nothing derives time from recomposition.
 
 **Proven by:** JVM tests in fake time asserting all three readings agree across tempo
-changes, a count-in, and a pause/resume. *Status: to be written with `:core:practice`.*
+changes, a count-in, and a pause/resume. *Status: held by `TempoConductorTest` — "the scroll
+offset and the judging window read the same now" samples `position()` against `ticksAt(clock)`
+either side of a pause; "the count-in counts down and the position crosses zero" and "a count-in
+starting mid-piece still lands on the requested position" cover the count-in; "changing tempo
+hands the position over without a jump" covers a tempo change; and "nanosFor and ticksAt are
+exact inverses" pins the mapping over five tempi and three beat units.*
 
 ### I2 — A verdict is about the note you actually played
 
@@ -76,7 +81,15 @@ inputs alone.
 nasty cases — grace-note-early, note held across the boundary, two notes inside one window,
 a trill of extras. Plus a round-trip test: generate a *perfect* performance from a `Score`
 and assert the judge finds zero faults, which catches whole-model drift that per-case tests
-miss. *Status: to be written with `:core:practice`.*
+miss. *Status: held by `WindowedJudgeTest` — "a perfect performance has no faults at all" is the
+round trip, with "two notes inside one window", "a trill of unexpected notes…", "a tied
+continuation is never judged" and "an exact pitch is preferred to a nearer wrong pitch" as the
+nasty cases, and "the live fold and judgeAll reach identical verdicts" holding the live and batch
+paths to one answer. Reproducibility is held by `TempoConductorTest` — "a perfect performance
+across a pause re-judges identically from its own snapshot", which re-judges the recorded notes
+after the transport has moved on and gets the same verdicts. "A wrong note played on time stays a
+wrong note at any tempo" holds the verdict itself against the tempo, since a fixed matching window
+turned a wrong note at 200bpm into the next note played early.*
 
 ### I3 — The app never scores you on something it cannot hear
 
@@ -95,7 +108,14 @@ mono source against a polyphonic score yields `Refused(reason)`, surfaced in the
 offer to practise hands-separately, and written to the diagnostics log.
 
 **Proven by:** a test that a mono source + polyphonic score refuses, and that the refusal
-reason names the bar. *Status: to be written with `:core:practice`.*
+reason names the bar. *Status: held by `WindowedJudgeTest` — "a mono source on a polyphonic score
+is refused, naming the first polyphonic bar", "a held left hand under a moving right hand is
+polyphonic, though no onset is shared" (the texture an onset-based gate waved through), "a mono
+source on a monophonic score is accepted" and "judgeAll refuses rather than scoring what the input
+cannot hear", which closes the bypass of judging without asking. `SpacedPracticeSchedulerTest`'s
+"a mono input is never handed material its own judge would refuse" carries the same gate back into
+what the app recommends, generated exercises included. The overlap test itself lives once, in
+`:core:score`, because `Score.polyphony` is the only definition.*
 
 ### I4 — What you practised is not lost
 
@@ -126,7 +146,14 @@ specific weak skill when the corpus has nothing suitable.
 
 **Proven by:** deterministic scheduler tests — feed a history where one skill is failing and
 assert the next selection targets it; feed a mastered history and assert it moves on.
-*Status: to be written with `:core:practice`.*
+*Status: held by `SpacedPracticeSchedulerTest` — "a skill that keeps failing is what next targets"
+and "mastered and nothing due moves on to a piece rather than drilling" are the two named here;
+"a lapse puts the skill back on the bottom rung, not one rung down" holds the spacing itself,
+since a ladder that only stepped back hid a just-failed skill for roughly ten days after one good
+session; "nothing suitable falls back to a generated exercise targeting the weakest skill" and
+"the spec a generated choice carries is the generator's own, not a second opinion" hold the
+generator route; and "the same inputs and seed give the same choice" keeps a choice reproducible
+from a report.*
 
 ### I6 — Nothing leaves the device unless you shared it
 
@@ -160,9 +187,9 @@ test that a session produces enough to reconstruct its verdicts are on the backl
 
 Stated plainly so nobody mistakes the above for a description of working software:
 
-- **Nothing here is proven yet.** Every invariant's proof is "to be written". This document
-  is the plan for what the tests must hold, not a report on what they do hold. When each
-  lands, update its status here in the same pass.
+- **Only the pure-JVM half is proven.** I1, I2, I3 and I5 now name the tests that hold them;
+  I4, I6 and I7 are still "to be written", and until they land this document remains partly a
+  plan rather than a report. When each lands, update its status here in the same pass.
 - **Latency is unmeasured.** I2's promise is about numbers, and the audio path's real
   round-trip latency on Dewi's phone is currently unknown. Until it is measured and
   compensated, mic verdicts carry a systematic timing bias of unknown size. This is the

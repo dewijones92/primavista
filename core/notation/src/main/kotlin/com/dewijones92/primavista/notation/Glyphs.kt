@@ -80,8 +80,10 @@ public enum class SmuflGlyph(public val glyphName: String) {
     ;
 
     public companion object {
+        private const val HIGHEST_DIGIT = 9
+
         public fun timeSigDigit(digit: Int): SmuflGlyph {
-            require(digit in 0..9) { "$digit is not a digit" }
+            require(digit in 0..HIGHEST_DIGIT) { "$digit is not a digit" }
             return entries.first { it.glyphName == "timeSig$digit" }
         }
     }
@@ -124,6 +126,8 @@ public data class EngravingDefaults(
     val thinBarlineThickness: StaffSpaces,
     val thickBarlineThickness: StaffSpaces,
     val barlineSeparation: StaffSpaces,
+    val tieMidpointThickness: StaffSpaces,
+    val slurMidpointThickness: StaffSpaces,
 )
 
 /**
@@ -142,6 +146,12 @@ public interface GlyphMetrics {
     /**
      * A named attachment point, e.g. `stemUpSE` on a notehead — where a stem must actually meet it.
      * Placing stems by eye instead of by anchor is the difference between engraving and drawing.
+     *
+     * **y points UP here**, as the font publishes it and consistently with [GlyphBox]'s
+     * south-west/north-east naming — the opposite of the laid-out coordinates in `Layout.kt`, which
+     * point down to match a drawing surface. The flip happens once, where an anchor is turned into
+     * a position; two conventions in one module with no note is how a stem ends up on the wrong end
+     * of the notehead.
      */
     public fun anchor(glyph: SmuflGlyph, name: String): Pair<StaffSpaces, StaffSpaces>?
 }

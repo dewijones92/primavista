@@ -21,6 +21,10 @@ dependencies {
     api(project(":lib:pitch"))
     implementation(libs.kotlinx.coroutines.core)
 
+    // The timing, pitch-mapping, envelope and beat-crossing logic in here has no Android
+    // dependency, so it is JVM-testable; only the AudioTrack/AudioRecord bridges need a device.
+    testImplementation(libs.junit)
+
     androidTestImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.ext.junit)

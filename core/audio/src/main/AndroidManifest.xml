@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Declared by the module that opens the AudioRecord, so any consumer inherits the
+         requirement and lint can see it. :app declares it too; the merger dedupes. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+</manifest>

@@ -31,25 +31,64 @@ public sealed interface Verdict {
     public val isClean: Boolean get() = this is Correct
 }
 
-public data class NoteJudgement(
-    /** Index into [Score.attackedNotes] — a tied continuation is not judged. */
-    val noteIndex: Int,
-    val verdict: Verdict,
-)
+/**
+ * What happened, tied to the note it happened to — or explicitly not tied to one.
+ *
+ * Sealed rather than a nullable index, because a [Verdict.Extra] answers to no notated note and
+ * the first implementation had to invent a `-1` sentinel to say so. A sentinel is an illegal state
+ * made representable, which is the thing CLAUDE.md's compile-time-safety rule exists to stop; here
+ * it would have meant `attackedNotes[-1]` was one careless call away.
+ *
+ * [confidence] travels with the judgement because the diagnostics report has to answer "was that
+ * really a wrong note, or did the mic barely hear it?" — a verdict without it cannot be re-judged.
+ */
+public sealed interface NoteJudgement {
+    public val verdict: Verdict
+    public val confidence: Float
+
+    /** [noteIndex] indexes [Score.attackedNotes]; a tied continuation is never judged. */
+    public data class OfNote(
+        val noteIndex: Int,
+        override val verdict: Verdict,
+        override val confidence: Float = 1f,
+    ) : NoteJudgement
+
+    public data class Unexpected(
+        override val verdict: Verdict.Extra,
+        override val confidence: Float = 1f,
+    ) : NoteJudgement
+}
 
 /**
  * How much slack a note gets. Deliberately explicit rather than a single "difficulty" number,
  * because tolerating a wrong pitch and tolerating bad timing are different pedagogical choices.
+ *
+ * The **matching** window is a fraction of a beat rather than a fixed number of milliseconds.
+ * A fixed 400ms was wider than a whole beat above 150bpm, so a wrong note played dead on time was
+ * matched to the *next* written note and reported as that note played 288ms early — a verdict that
+ * names the wrong pitch, the wrong note and the wrong fault, which is docs/spec.md I2 failing
+ * outright. The floor and ceiling keep it sane at extreme tempi, where a fraction of a beat would
+ * otherwise become either unhittable or wider than the music.
+ *
+ * The **on-time** window stays absolute: how precisely a human can place a note is a property of
+ * the human, not of the tempo.
  */
 public data class Tolerances(
-    /** Half-width of the on-time window. Outside it but within [windowMillis] is Early/Late. */
+    /** Half-width of the on-time window. Outside it but inside the matching window is Early/Late. */
     val onTimeMillis: Double = 90.0,
+    /** Matching half-width, as a fraction of a quarter-note beat. */
+    val windowBeats: Double = 0.5,
+    val minWindowMillis: Double = 120.0,
     /** Beyond this, a note is Missed and a played note becomes Extra rather than very late. */
-    val windowMillis: Double = 400.0,
+    val maxWindowMillis: Double = 400.0,
 ) {
     init {
-        require(onTimeMillis > 0 && windowMillis >= onTimeMillis) {
-            "the on-time window must be positive and no wider than the matching window"
+        require(onTimeMillis > 0 && windowBeats > 0) { "tolerances must be positive" }
+        require(minWindowMillis <= maxWindowMillis) {
+            "a matching window floor of ${minWindowMillis}ms is above its ceiling of ${maxWindowMillis}ms"
+        }
+        require(onTimeMillis <= minWindowMillis) {
+            "an on-time band of ${onTimeMillis}ms does not fit inside a ${minWindowMillis}ms matching window"
         }
     }
 }
@@ -69,8 +108,29 @@ public data class SessionResult(
 ) {
     public val correct: Int get() = judgements.count { it.verdict.isClean }
 
+    /** Notes played that answered to nothing written — a trill of wrong notes, a slipped finger. */
+    public val extras: Int get() = judgements.count { it is NoteJudgement.Unexpected }
+
+    /**
+     * How much of the written music was played correctly. Deliberately measured against
+     * [notesExpected] rather than against what was judged, so stopping a third of the way through
+     * scores a third and not full marks.
+     */
     public val accuracy: Double
         get() = if (notesExpected == 0) 0.0 else correct.toDouble() / notesExpected
+
+    /**
+     * Accuracy with unexpected notes counted against you.
+     *
+     * Separate from [accuracy] because they answer different questions and conflating them hides a
+     * real fault: a performance that plays every written note correctly *and* twenty notes that
+     * were not written is not a clean performance, but by [accuracy] alone it scores 100%.
+     */
+    public val cleanliness: Double
+        get() {
+            val denominator = notesExpected + extras
+            return if (denominator == 0) 0.0 else correct.toDouble() / denominator
+        }
 }
 
 /** Why a session could not be judged at all. Carries enough to tell Dewi where to look. */
@@ -117,6 +177,14 @@ public interface PerformanceJudge {
     /** Refuses before any work when the score and input cannot honestly be paired. */
     public fun accepts(score: Score, source: AnswerSource): RefusalReason?
 
+    /**
+     * [timing] must be an immutable snapshot of the tempo map, not a live transport.
+     *
+     * Handing the judge a running `Conductor` makes it un-pure by the back door: a session
+     * containing a pause then re-judges differently from a report of itself, because the mapping it
+     * consulted has moved on. That breaks docs/spec.md I2's whole basis, so take
+     * [Conductor.timingSnapshot] here rather than the Conductor.
+     */
     public fun begin(score: Score, timing: TickTiming): JudgeState
 
     /** Folds in one played note, returning any verdicts it settled. */
@@ -133,5 +201,15 @@ public interface PerformanceJudge {
 
     public fun finish(state: JudgeState): SessionResult
 
-    public fun judgeAll(score: Score, timing: TickTiming, played: List<PlayedNote>): SessionResult
+    /**
+     * The whole fold in one call, over a finished performance. Returns [JudgeOutcome] rather than a
+     * bare result so a caller cannot skip [accepts] and receive a confident score for a pairing the
+     * judge would have refused — which is the only way spec I3 could be bypassed.
+     */
+    public fun judgeAll(
+        score: Score,
+        source: AnswerSource,
+        timing: TickTiming,
+        played: List<PlayedNote>,
+    ): JudgeOutcome
 }

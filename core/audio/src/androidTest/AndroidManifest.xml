@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The capture tests open a real AudioRecord; grant it with
+         `adb shell pm grant <test package> android.permission.RECORD_AUDIO`
+         or accept the runtime prompt. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+</manifest>

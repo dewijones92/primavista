@@ -6,8 +6,11 @@ naming:
 
 complexity:
   TooManyFunctions:
-    # A cohesive parser or layout engine legitimately gathers many small private helpers.
+    # A cohesive parser or layout engine legitimately gathers many small private helpers, and a
+    # session view model has one small function per transport action. Splitting either to satisfy
+    # a count would scatter one responsibility across two types.
     thresholdInFiles: 20
+    thresholdInClasses: 14
   LongParameterList:
     ignoreDefaultParameters: true
     ignoreAnnotated: ['Composable']
@@ -24,9 +27,15 @@ style:
     excludeGuardClauses: true
   MagicNumber:
     # Music has real constants: 12 semitones, 5 staff lines, 7 letter names, 440Hz.
-    # Named declarations carry their own meaning.
+    # Named declarations carry their own meaning, and so do named constructor arguments and
+    # enum entries — `LayoutStyle(quarterNoteWidth = StaffSpaces(3.2))` and `Whole(ticks * 4)`
+    # are self-documenting, and hoisting each to a private const only moves the number further
+    # from the name that explains it. Without these, the rule pushed real indirection into the
+    # contract files rather than catching anything.
     ignorePropertyDeclaration: true
     ignoreCompanionObjectPropertyDeclaration: true
+    ignoreNamedArgument: true
+    ignoreEnums: true
     ignoreAnnotated: ['Composable']
 
 formatting:

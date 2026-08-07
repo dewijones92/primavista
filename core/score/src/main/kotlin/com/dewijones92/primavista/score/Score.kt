@@ -9,15 +9,13 @@ package com.dewijones92.primavista.score
  * staff line.
  */
 public enum class Clef(public val glyphName: String, public val referenceDiatonicIndex: Int) {
-    /** Bottom line is E4. */
-    Treble("gClef", 4 * Pitch.LETTERS_PER_OCTAVE + 2),
-
-    /** Bottom line is G2. */
-    Bass("fClef", 2 * Pitch.LETTERS_PER_OCTAVE + 4),
-
-    /** Bottom line is F3. */
-    Alto("cClef", 3 * Pitch.LETTERS_PER_OCTAVE + 3),
+    Treble("gClef", bottomLine(Letter.E, octave = 4)),
+    Bass("fClef", bottomLine(Letter.G, octave = 2)),
+    Alto("cClef", bottomLine(Letter.F, octave = 3)),
 }
+
+private fun bottomLine(letter: Letter, octave: Int): Int =
+    octave * Pitch.LETTERS_PER_OCTAVE + letter.diatonicStep
 
 /**
  * Which staff of the system a note belongs to. Named for the hand rather than the clef
@@ -81,13 +79,24 @@ public data class Rest(
     override val voice: Int,
 ) : ScoreEvent
 
+/**
+ * One bar. [index] is 0-based — its position in [Score.measures]. [number] is the 1-based bar a
+ * human reads, and is what [Dropped.measure] and [Score.firstPolyphonicMeasure] both mean;
+ * [numberOf] is the module's only `+ 1`. See `.claude/CODE-NOTES.md`.
+ */
 public data class Measure(
     val index: Int,
     val start: Ticks,
     val time: TimeSignature,
     val key: KeySignature,
     val clefs: Map<Staff, Clef>,
-)
+) {
+    public val number: Int get() = numberOf(index)
+
+    public companion object {
+        public fun numberOf(index: Int): Int = index + 1
+    }
+}
 
 /**
  * How many notes can sound at once. A property of the music, checked against what an input
@@ -134,6 +143,35 @@ public data class Score(
     public val endsAt: Ticks get() = events.maxOfOrNull { it.endsAt } ?: Ticks.ZERO
 
     public val isGrandStaff: Boolean get() = staves.size > 1
+
+    /**
+     * Whether more than one note is ever **sounding** at the same time.
+     *
+     * Overlap, not simultaneous onset, and the distinction is the whole of docs/spec.md I3. The
+     * commonest piano texture on earth is a held left-hand note under a moving right hand, and its
+     * onsets never coincide — so an onset-based test calls it monophonic, lets it onto a mic that
+     * can only follow one line, and silently mis-scores it. That was found by the adversarial
+     * review on 2026-08-07 and is exactly the failure the refusal exists to prevent.
+     *
+     * Lives on [Score] rather than in the judge so that the refusal gate, [ScoreSummary] and the
+     * scheduler all ask the same question and cannot answer it differently.
+     */
+    public val polyphony: Polyphony
+        get() = if (firstPolyphonicMeasure() == null) Polyphony.Mono else Polyphony.Poly
+
+    /**
+     * The bar where two notes first overlap, [Measure.number]-style, or null if none ever do. Tied
+     * continuations count, because a tie extends a sound. See `.claude/CODE-NOTES.md`.
+     */
+    public fun firstPolyphonicMeasure(): Int? {
+        val at = notes.sortedBy { it.onset.value }
+            .zipWithNext()
+            .firstOrNull { (earlier, later) -> later.onset < earlier.endsAt }
+            ?.second?.onset
+            ?: return null
+        val measure = measures.lastOrNull { it.start <= at } ?: measures.firstOrNull()
+        return measure?.number ?: Measure.numberOf(index = 0)
+    }
 }
 
 /** A summary for choosing what to practise without loading every event of every piece. */

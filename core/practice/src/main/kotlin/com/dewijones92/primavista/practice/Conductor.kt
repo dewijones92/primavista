@@ -14,9 +14,19 @@ public fun interface NanoClock {
 /**
  * A pure mapping between musical position and wall time, with no clock attached.
  *
- * Split out from [Conductor] deliberately: [PerformanceJudge] needs the mapping but has no
- * business being able to ask what time it is. A pure judge is a reproducible judge, which is
- * what lets a diagnostics report re-derive the same verdicts later (docs/spec.md I2).
+ * Split out from [Conductor] deliberately: [PerformanceJudge] needs the mapping but has no business
+ * being able to ask what time it is. A pure judge is a reproducible judge, which is what lets a
+ * diagnostics report re-derive the same verdicts later (docs/spec.md I2).
+ *
+ * **Nanos are absolute readings of the same monotonic clock [PlayedNote.atNanos] came from**, not
+ * durations since the start. They have to be, or an input's timestamp could not be compared against
+ * the music at all.
+ *
+ * **Implementations must be immutable snapshots.** The first implementation handed the live
+ * `Conductor` to the judge, and a session containing a pause then re-judged *differently from a
+ * report of itself* — every Correct became an Extra plus a Missed, because the mapping had moved on
+ * since the notes were played. A snapshot has to record the pauses that happened, not the transport
+ * that is still happening.
  */
 public interface TickTiming {
     public fun nanosFor(position: Ticks): Long
@@ -54,22 +64,30 @@ public interface Conductor : TickTiming {
 
     public fun resume()
 
+    /** Ends the session at the current position, which stays readable: "how far did he get" matters. */
     public fun stop()
 
     /**
-     * Adjusts for input latency measured on the device. Applied here, once, at the boundary —
-     * nothing downstream should know latency exists (docs/todos/measure-audio-latency.md).
+     * An immutable record of the tempo map **including every pause that actually happened**, safe to
+     * hand to [PerformanceJudge] and to store for later re-judging.
+     *
+     * This is the only thing the judge may be given. See [TickTiming] for what went wrong when it
+     * was handed the live transport instead.
      */
-    public fun setInputLatency(latency: InputLatency)
-
-    public val inputLatency: InputLatency
+    public fun timingSnapshot(): TickTiming
 }
 
 /**
  * How late an input arrives relative to the moment it physically happened, and — as important —
- * whether that figure was actually measured. An assumed latency presented as a measured one is
- * the failure mode docs/todos/measure-audio-latency.md is about, so the provenance travels with
- * the number and into every log line.
+ * whether that figure was actually measured. An assumed latency presented as a measured one is the
+ * failure mode docs/todos/measure-audio-latency.md is about, so the provenance travels with the
+ * number and into every log line.
+ *
+ * **The adapter applies its own correction, and the Conductor never does.** Latency is a property
+ * of one input device, so an app with two sources attached would need the Conductor to know which
+ * source each note came from — which it deliberately cannot. So a [PlayedNote.atNanos] is already
+ * true time by the moment it exists, and this value is carried for reporting, not for a second
+ * subtraction. Correcting in both places was a live double-count until 2026-08-07.
  */
 public data class InputLatency(
     val millis: Double,

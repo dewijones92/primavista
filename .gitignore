@@ -28,5 +28,11 @@ signing.properties
 
 # Logs and local agent scratch (worktrees, session files)
 *.log
-.claude/
 /dev/active
+
+# .claude/ holds local agent scratch, EXCEPT CODE-NOTES.md — the comment rule in CLAUDE.md sends
+# every explanation over ~30 characters there, so ignoring it would delete the substance rather
+# than relocate it. Git cannot re-include a file whose parent directory is excluded, hence
+# `.claude/*` rather than `.claude/`.
+.claude/*
+!.claude/CODE-NOTES.md

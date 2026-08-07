@@ -74,6 +74,11 @@ public interface PitchDetector {
 }
 
 public interface OnsetDetector {
+    public val sampleRate: Int
+
+    /** How coarsely onsets can be located: a tracker cannot report better precision than this. */
+    public val hopFrames: Int
+
     public fun push(pcm: FloatArray, frames: Int): List<NoteOnset>
 
     public fun reset()
@@ -85,6 +90,13 @@ public interface OnsetDetector {
  * read as one, and a vibrato read as several.
  */
 public interface MonophonicNoteTracker {
+    /**
+     * Required, not incidental: [TrackedNote.atFrame] and [TrackedNote.detectionDelayFrames] are
+     * frame counts, and nothing downstream can turn them into time without it. Leaving it off meant
+     * the adapter had to know the rate independently, which is the same fact in two places.
+     */
+    public val sampleRate: Int
+
     public fun push(pcm: FloatArray, frames: Int): List<TrackedNote>
 
     public fun reset()

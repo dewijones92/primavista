@@ -1,0 +1,199 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # A hand-startable run, because a push event is not guaranteed to produce one. Actions had a
+  # major outage on 2026-08-06 during which pushes to Totum's main created no runs at all and
+  # were never backfilled. With only `push`, the sole recovery is an empty commit — a lie in the
+  # history about what changed. This makes the recovery honest.
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Its own job, and deliberately NOT a dependency of the release: an emulator is the flakiest
+  # thing in any Android pipeline, and Dewi installs these releases through Obtainium. Blocking
+  # his APK on a flaky VM trades a real problem for a worse one. It goes red and is seen; it does
+  # not stop a build shipping.
+  instrumented:
+    name: Instrumented tests (emulator)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # Without KVM the emulator falls back to software rendering and is far too slow to finish.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          # Animations off so Compose's idling resource is not waiting on them. stayon matters as
+          # much as the unlock: the build takes minutes, and a screen that slept meanwhile puts the
+          # device back in the state the unlock was there to avoid.
+          script: |
+            adb shell input keyevent 82
+            adb shell svc power stayon true
+            adb shell settings put global window_animation_scale 0
+            adb shell settings put global transition_animation_scale 0
+            adb shell settings put global animator_duration_scale 0
+            ./gradlew connectedDebugAndroidTest --no-daemon
+
+      # Always, not just on failure: a PASS that was really a skip looks identical otherwise, and
+      # this suite's whole value is being believed about what it did.
+      - name: Upload instrumented reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: instrumented-reports
+          path: |
+            **/build/reports/androidTests/**
+            **/build/outputs/androidTest-results/**
+
+  # Non-blocking by design: it compares a shipped asset against an upstream file, so it can go red
+  # for a reason that has nothing to do with the commit. Same argument as the disabled
+  # version-freshness lint checks — informative, not gating.
+  smufl-assets:
+    name: SMuFL asset freshness
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the trimmed glyph map matches the SMuFL spec
+        run: |
+          curl -sSfL -o /tmp/glyphnames.json \
+            https://raw.githubusercontent.com/w3c/smufl/gh-pages/metadata/glyphnames.json
+          python3 tools/smufl/trim-metadata.py /tmp/glyphnames.json --check
+
+  build:
+    name: Quality gates + build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # publishing the release
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Static analysis (detekt)
+        run: ./gradlew detekt --no-daemon
+
+      - name: Android Lint
+        run: ./gradlew lint --no-daemon
+
+      - name: Unit tests
+        run: ./gradlew test --no-daemon
+
+      - name: Coverage gate (logic modules)
+        run: ./gradlew koverVerify --no-daemon
+
+      # Instrumented tests need a device to RUN but compile without one. Totum let a test sit red
+      # for an unknown time asserting a string the app had stopped showing, because nothing
+      # compiled them. A test that cannot compile is worse than absent: it looks like coverage.
+      - name: Compile instrumented tests
+        run: ./gradlew assembleDebugAndroidTest --no-daemon
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      # docs/spec.md I6 is an ABSENCE, and an absence is exactly what silently stops being true —
+      # a transitive dependency can add INTERNET without anyone editing our manifest. The
+      # merged-manifest count is asserted first, because a check that finds nothing to check and
+      # reports success is the failure mode here.
+      - name: Assert no INTERNET permission (spec I6)
+        run: |
+          set -euo pipefail
+          mapfile -t manifests < <(find app/build -name AndroidManifest.xml -path '*merged*')
+          if [ "${#manifests[@]}" -eq 0 ]; then
+            echo "::error::found no merged manifest to check — this check proves nothing"
+            exit 1
+          fi
+          echo "checking ${#manifests[@]} merged manifest(s)"
+          if grep -l 'android.permission.INTERNET' "${manifests[@]}"; then
+            echo "::error::INTERNET permission is in the merged manifest, breaking spec I6"
+            exit 1
+          fi
+          echo "ok — no INTERNET permission"
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: primavista-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+
+      # ---- Signed release of main's tip, for Obtainium ----
+
+      - name: Decode signing keystore
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "${{ secrets.SIGNING_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/primavista-release.jks"
+
+      - name: Assemble signed release APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          SIGNING_KEYSTORE_PATH: ${{ runner.temp }}/primavista-release.jks
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --no-daemon \
+            -PversionCode=$((100 + GITHUB_RUN_NUMBER)) \
+            -PversionName="0.1.${GITHUB_RUN_NUMBER}" \
+            -PgitSha="${GITHUB_SHA:0:7}"
+
+      # A real tag per build, not a rolling one. Obtainium's default version string for a GitHub
+      # source is the release TAG, so a permanently-fixed `latest` means the version never appears
+      # to change and an update is only ever detected via non-default settings. v0.1.<run> matches
+      # versionName exactly, so the tag, the release title and the installed app all agree.
+      - name: Publish versioned release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk primavista.apk
+          # Ship the R8 mapping with the build it belongs to: without it a crash report from this
+          # APK is a wall of one-letter class names, and it is useless if fetched later.
+          cp app/build/outputs/mapping/release/mapping.txt primavista-mapping.txt || true
+          # Not a prerelease, so this becomes the repo's "Latest release" and
+          # /releases/latest/download/primavista.apk stays a stable URL with nothing for
+          # Obtainium to switch on.
+          gh release create "v0.1.${GITHUB_RUN_NUMBER}" primavista.apk primavista-mapping.txt \
+            --target "${GITHUB_SHA}" \
+            --title "PrimaVista main tip (0.1.${GITHUB_RUN_NUMBER})" \
+            --notes "Build of main at ${GITHUB_SHA}. Signed; safe to update over previous builds."
+
+      - name: Upload reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: |
+            app/build/reports/
+            build/reports/
+            **/build/reports/tests/**

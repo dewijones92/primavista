@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Only the values the platform needs before Compose starts. The real palette
+    <!-- The only value the platform needs before Compose starts: the window background, so the
+         first frame is the brand's ink rather than a flash of platform white. The real palette
          lives in theme/Color.kt and nowhere else. -->
     <color name="brand_ink">#FF12101A</color>
-    <color name="brand_brass">#FFE8A13C</color>
 </resources>

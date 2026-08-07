@@ -26,10 +26,16 @@ public value class Ticks(public val value: Long) : Comparable<Ticks> {
 public object MusicalTime {
     public const val TICKS_PER_QUARTER: Long = 10080L
 
+    public const val QUARTERS_PER_WHOLE: Int = 4
+
     public fun quarters(count: Int): Ticks = Ticks(TICKS_PER_QUARTER * count)
 
-    public fun wholes(count: Int): Ticks = Ticks(TICKS_PER_QUARTER * 4 * count)
+    public fun wholes(count: Int): Ticks = quarters(QUARTERS_PER_WHOLE * count)
 }
+
+private fun quarterTicks(count: Int): Long = MusicalTime.TICKS_PER_QUARTER * count
+
+private fun quarterTicksDividedBy(divisor: Int): Long = MusicalTime.TICKS_PER_QUARTER / divisor
 
 /**
  * The written shape of a note or rest, independent of how long it actually lasts.
@@ -38,13 +44,13 @@ public object MusicalTime {
  * duration in this app is ever the result of a floating-point multiply.
  */
 public enum class NoteSymbol(public val undottedTicks: Long, public val flagCount: Int) {
-    DoubleWhole(MusicalTime.TICKS_PER_QUARTER * 8, 0),
-    Whole(MusicalTime.TICKS_PER_QUARTER * 4, 0),
-    Half(MusicalTime.TICKS_PER_QUARTER * 2, 0),
-    Quarter(MusicalTime.TICKS_PER_QUARTER, 0),
-    Eighth(MusicalTime.TICKS_PER_QUARTER / 2, 1),
-    Sixteenth(MusicalTime.TICKS_PER_QUARTER / 4, 2),
-    ThirtySecond(MusicalTime.TICKS_PER_QUARTER / 8, 3),
+    DoubleWhole(quarterTicks(count = 8), flagCount = 0),
+    Whole(quarterTicks(count = 4), flagCount = 0),
+    Half(quarterTicks(count = 2), flagCount = 0),
+    Quarter(MusicalTime.TICKS_PER_QUARTER, flagCount = 0),
+    Eighth(quarterTicksDividedBy(divisor = 2), flagCount = 1),
+    Sixteenth(quarterTicksDividedBy(divisor = 4), flagCount = 2),
+    ThirtySecond(quarterTicksDividedBy(divisor = 8), flagCount = 3),
     ;
 
     /** True when the symbol has a stem at all — breves and semibreves do not. */
@@ -86,6 +92,14 @@ public data class Duration(
             }
             return Ticks(numerator / denominator)
         }
+
+    /**
+     * Null instead of throwing, for callers building durations from untrusted or combinatorial
+     * input — a MusicXML file in the wild, or a generator exploring a spec. Those callers need to
+     * *reject* a combination, and a throwing property getter turns that into exception control flow
+     * at every use site.
+     */
+    public val ticksOrNull: Ticks? get() = runCatching { ticks }.getOrNull()
 
     public val isTuplet: Boolean get() = tupletNumerator != tupletDenominator
 

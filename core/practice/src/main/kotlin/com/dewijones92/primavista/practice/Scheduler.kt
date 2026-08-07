@@ -1,6 +1,7 @@
 package com.dewijones92.primavista.practice
 
 import com.dewijones92.primavista.score.DifficultySpec
+import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.ScoreId
 import com.dewijones92.primavista.score.ScoreSummary
 import com.dewijones92.primavista.score.SkillTag
@@ -11,6 +12,11 @@ import com.dewijones92.primavista.score.SkillTag
  * [strength] is 0.0 (never read it correctly) to 1.0 (reliable). [dueAtEpochMillis] is when it
  * is worth revisiting — spacing matters as much as accuracy, because a skill you got right once
  * yesterday is not one you have learnt.
+ *
+ * [repetition] is the SM-2 rung: clean sessions **since the last lapse**, which is what sets the
+ * interval. It cannot be derived from [attempts] and [lapses] — those are lifetime totals, and
+ * using their difference meant one good session after a failure jumped a mature skill to roughly
+ * ten days, i.e. the app hiding the thing Dewi had just got wrong (docs/spec.md I5).
  */
 public data class SkillState(
     val tag: SkillTag,
@@ -18,6 +24,7 @@ public data class SkillState(
     val dueAtEpochMillis: Long,
     val attempts: Int,
     val lapses: Int,
+    val repetition: Int = 0,
 ) {
     init {
         require(strength in 0.0..1.0) { "strength $strength outside 0..1" }
@@ -53,9 +60,16 @@ public sealed interface PracticeChoice {
  * ordinary assertions rather than statistical ones.
  */
 public interface PracticeScheduler {
+    /**
+     * [input] is what the session's [AnswerSource] can actually hear, and it is required rather
+     * than assumed: without it the scheduler recommended two-hand material to a mono mic, which
+     * `PerformanceJudge.accepts` then refused — the app proposing work it will not mark. The
+     * polyphony gate belongs on everything offered, generated material included.
+     */
     public fun next(
         available: List<ScoreSummary>,
         states: List<SkillState>,
+        input: Polyphony,
         nowEpochMillis: Long,
         seed: Long,
     ): PracticeChoice

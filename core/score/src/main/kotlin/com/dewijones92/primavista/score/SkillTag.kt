@@ -12,8 +12,14 @@ public sealed interface SkillTag {
     /** Reading a pitch in a region of a given clef — the core skill, and the commonest failure. */
     public data class ClefRegion(val clef: Clef, val band: PitchBand) : SkillTag
 
-    /** Notes off the staff, where counting lines stops being automatic. */
-    public data class LegerLines(val clef: Clef, val count: Int) : SkillTag
+    /**
+     * Notes off the staff, where counting lines stops being automatic.
+     *
+     * [above] is carried rather than inferred: reading two leger lines above a bass staff and two
+     * below it are different skills with different failure rates, and without the side, targeting
+     * this skill is a coin flip about which end of the staff to generate.
+     */
+    public data class LegerLines(val clef: Clef, val count: Int, val above: Boolean) : SkillTag
 
     /** An accidental in front of the note. */
     public data class Accidental(val alter: Alter) : SkillTag
@@ -40,11 +46,17 @@ public sealed interface SkillTag {
  * verdict can never disagree about what was being tested.
  */
 public interface ScoreSkills {
-    public fun skillsOf(score: Score, note: Note): Set<SkillTag>
+    /**
+     * [attackIndex] indexes [Score.attackedNotes] and is required, not optional: "the leap from the
+     * previous note" needs to know *which* note this is, and finding it by scanning and matching on
+     * equality picks the wrong one whenever a piece repeats a pitch — which music does constantly.
+     */
+    public fun skillsOf(score: Score, attackIndex: Int): Set<SkillTag>
 
     public fun skillsOf(score: Score): Set<SkillTag>
 
     public fun bandOf(clef: Clef, pitch: Pitch): PitchBand
 
-    public fun legerLineCount(clef: Clef, pitch: Pitch): Int
+    /** Signed: positive above the staff, negative below, zero within it. */
+    public fun legerLines(clef: Clef, pitch: Pitch): Int
 }
