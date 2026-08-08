@@ -45,7 +45,56 @@ class SessionStoreTest {
 
         store.save(sampleSession(), judgements)
 
-        assertEquals(judgements, store.judgements(SessionId("session-1")))
+        assertEquals(judgements, store.judgements(SessionId("session-1")).readOrFail())
+    }
+
+    /**
+     * A `@TypeConverter` fails the whole cursor, not one row, so this used to crash whichever
+     * screen ran the query. Observed on the emulator on 2026-08-08 — see `.claude/CODE-NOTES.md`.
+     */
+    @Test
+    fun anEnumNameThisBuildDoesNotKnowRefusesTheQueryInsteadOfCrashingTheScreen() = runBlocking {
+        val diag = RecordingDiag()
+        store = RoomSessionStore(database, diag)
+        store.save(sampleSession(), emptyList())
+        corruptStoredProvenance()
+
+        assertTrue(store.recent() is StoredReading.Unreadable)
+        assertTrue(
+            "the refusal did not name the value: ${diag.lines}",
+            diag.lines.any { it.contains("could not be read at all") && it.contains("Unmeasured") },
+        )
+    }
+
+    /**
+     * The Progress screen says "nothing practised yet" when it is handed an empty list, so a
+     * refusal that arrives as one is the app lying about Dewi's practice (docs/spec.md I4).
+     */
+    @Test
+    fun aRefusedReadIsNotTheSameValueAsAnEmptyHistory() = runBlocking {
+        assertEquals(StoredReading.Readable(emptyList<StoredSession>()), store.recent())
+
+        store.save(sampleSession(), emptyList())
+        corruptStoredProvenance()
+
+        val refused = store.recent()
+        assertTrue("a corrupt row read back as no practice at all", refused is StoredReading.Unreadable)
+        assertTrue((refused as StoredReading.Unreadable).reason.contains("Unmeasured"))
+        assertTrue(refused.what.contains("most recent sessions"))
+    }
+
+    @Test
+    fun theUnfinishedAndVerdictReadsRefuseTheSameWay() = runBlocking {
+        store.save(sampleSession(finishedAtEpochMillis = null), listOf(NoteJudgement.OfNote(0, Verdict.Missed)))
+        corruptStoredProvenance()
+
+        assertTrue(store.unfinished() is StoredReading.Unreadable)
+        assertEquals(1, store.judgements(SessionId("session-1")).readOrFail().size)
+    }
+
+    private fun corruptStoredProvenance() {
+        database.openHelper.writableDatabase
+            .execSQL("UPDATE sessions SET latencyProvenance = 'Unmeasured' WHERE id = 'session-1'")
     }
 
     /** A trill puts several extras in one session, and none of them answers to a note index. */
@@ -57,7 +106,7 @@ class SessionStoreTest {
 
         store.save(sampleSession(), trill)
 
-        assertEquals(trill, store.judgements(SessionId("session-1")))
+        assertEquals(trill, store.judgements(SessionId("session-1")).readOrFail())
     }
 
     @Test
@@ -65,7 +114,7 @@ class SessionStoreTest {
         val origin = ScoreOrigin.Generated(seed = 987_654_321L, spec = sampleSpec())
         store.save(sampleSession(origin = origin), emptyList())
 
-        val read = store.recent().single()
+        val read = store.recent().readOrFail().single()
 
         assertEquals(origin, read.origin)
         assertEquals(sampleSpec(), (read.origin as ScoreOrigin.Generated).spec)
@@ -77,14 +126,14 @@ class SessionStoreTest {
         val origin = ScoreOrigin.Parsed(sourceName = "bwv-anh-114.musicxml", licence = "Public Domain")
         store.save(sampleSession(origin = origin), emptyList())
 
-        assertEquals(origin, store.recent().single().origin)
+        assertEquals(origin, store.recent().readOrFail().single().origin)
     }
 
     @Test
     fun savingTwiceReplacesTheSessionRatherThanDuplicatingIt() = runBlocking {
         val paused = sampleSession(finishedAtEpochMillis = null, correct = 4)
         store.save(paused, listOf(NoteJudgement.OfNote(0, Verdict.Correct(1.0))))
-        assertEquals(listOf(paused.id), store.unfinished().map { it.id })
+        assertEquals(listOf(paused.id), store.unfinished().readOrFail().map { it.id })
 
         val finished = sampleSession(finishedAtEpochMillis = 1_700_000_090_000L, correct = 11)
         store.save(
@@ -94,8 +143,8 @@ class SessionStoreTest {
 
         assertEquals(1, database.sessions().count())
         assertEquals(2, database.noteVerdicts().count())
-        assertEquals(11, store.recent().single().correct)
-        assertTrue(store.unfinished().isEmpty())
+        assertEquals(11, store.recent().readOrFail().single().correct)
+        assertTrue(store.unfinished().readOrFail().isEmpty())
     }
 
     @Test
@@ -107,7 +156,7 @@ class SessionStoreTest {
             )
         }
 
-        assertEquals(listOf("s1", "s2"), store.recent(limit = 2).map { it.id.value })
+        assertEquals(listOf("s1", "s2"), store.recent(limit = 2).readOrFail().map { it.id.value })
     }
 
     @Test
@@ -115,7 +164,7 @@ class SessionStoreTest {
         val row = sampleSession().toEntity().copy(originSpec = "v=1;staves=Nonsense")
         database.sessions().upsert(row)
 
-        val read = store.recent().single()
+        val read = store.recent().readOrFail().single()
 
         assertNull(read.origin)
         assertTrue(read.originDescriptor.contains("Nonsense"))
@@ -134,7 +183,7 @@ class SessionStoreTest {
         )
         database.sessions().upsert(row)
 
-        val read = store.recent().single()
+        val read = store.recent().readOrFail().single()
 
         assertNull(read.origin)
         assertTrue(read.originDescriptor.contains("kind=parsed"))

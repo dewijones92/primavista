@@ -6,10 +6,14 @@ import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.Score
 import com.dewijones92.primavista.score.SkillTag
 import com.dewijones92.primavista.score.Staff
+import com.dewijones92.primavista.score.Ticks
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+
+/** One tick at [TEST_TEMPO_BPM] is 0.0992ms; the judge states dt no finer than that. */
+private const val TICK_MILLIS_AT_TEST_TEMPO = 0.1
 
 private val SCALE = listOf(
     Letter.C to 4,
@@ -67,7 +71,6 @@ class WindowedJudgeTest {
         val cases = listOf(
             Triple(-50.0, "50ms early", Verdict.Correct(-50.0)),
             Triple(50.0, "50ms late", Verdict.Correct(50.0)),
-            Triple(-90.0, "on the early edge", Verdict.Correct(-90.0)),
             Triple(-150.0, "150ms early", Verdict.Early(-150.0)),
             Triple(250.0, "250ms late", Verdict.Late(250.0)),
         )
@@ -80,6 +83,18 @@ class WindowedJudgeTest {
 
             assertEquals(name, expected, result.judgements.single().verdict)
         }
+    }
+
+    @Test
+    fun `a note on the edge of the on-time band is correct, and dt is stated to one tick`() {
+        val score = scoreOf(listOf(tone(beat(1), Letter.C, 4)))
+        val timing = startedTiming()
+        val played = PlayedNote(midiOf(Letter.C, 4), timing.nanosFor(beat(1)) - ms(90.0))
+
+        val verdict = judgeAll(WindowedJudge(), score, timing, listOf(played)).judgements.single().verdict
+
+        assertTrue("$verdict", verdict is Verdict.Correct)
+        assertEquals(-90.0, (verdict as Verdict.Correct).dtMillis, TICK_MILLIS_AT_TEST_TEMPO)
     }
 
     @Test
@@ -250,9 +265,37 @@ class WindowedJudgeTest {
     }
 
     @Test
+    fun `re-timing swaps the map without disturbing what is already settled`() {
+        val score = scoreOf(listOf(tone(beat(0), Letter.C, 4), tone(beat(2), Letter.E, 4)))
+        val timing = startedTiming()
+        val judge = WindowedJudge()
+
+        val wrongOne = PlayedNote(midiOf(Letter.G, 4), timing.nanosFor(beat(0)))
+        val (begun, settled) = judge.advance(judge.begin(score, timing), wrongOne)
+        val later = timing.shiftedBy(ms(17_000.0))
+        val (ended, second) = judge.advance(
+            judge.retime(begun, later),
+            PlayedNote(midiOf(Letter.E, 4), later.nanosFor(beat(2))),
+        )
+
+        assertEquals(
+            ofNote(0, Verdict.WrongPitch(midiOf(Letter.C, 4), midiOf(Letter.G, 4), 0.0)),
+            settled.single(),
+        )
+        assertEquals(
+            "the note after the pause is on time, not 17s late",
+            ofNote(1, Verdict.Correct(0.0)),
+            second.single(),
+        )
+        assertEquals(settled + second, judge.finish(ended).judgements)
+    }
+
+    @Test
     fun `the live fold and judgeAll reach identical verdicts`() {
         val score = scaleScore()
-        val timing = startedTiming()
+        val clock = FakeClock()
+        val conductor = TempoConductor(clock, tempoBpm = TEST_TEMPO_BPM).also { it.start() }
+        val timing = conductor.timingSnapshot()
         val played = listOf(
             PlayedNote(midiOf(Letter.C, 4), timing.nanosFor(beat(0)) + ms(30.0)),
             PlayedNote(midiOf(Letter.D, 4), timing.nanosFor(beat(1)) + ms(200.0)),
@@ -264,7 +307,10 @@ class WindowedJudgeTest {
         val judge = taggedJudge()
 
         val batch = judgeAll(judge, score, timing, played)
-        val live = driveLive(judge, score, timing, played)
+        val session = LiveSession(judge, clock, conductor, score)
+        played.sortedBy { it.atNanos }.forEach(session::play)
+        session.runTo(timing.nanosFor(score.endsAt) + ms(600.0))
+        val live = session.finish()
 
         assertEquals(batch.judgements, live.judgements)
         assertEquals(batch.skillOutcomes, live.skillOutcomes)
@@ -433,31 +479,14 @@ private fun assertWindowEdges(bpm: Int, insideMillis: Double, outsideMillis: Dou
     assertTrue("$bpm bpm, ${outsideMillis}ms", verdictAt(outsideMillis) is NoteJudgement.Unexpected)
 }
 
-/**
- * The live path exactly as the UI drives it: sample the clock every frame, and sample it again at
- * an input's own timestamp before folding that input in.
- */
-private fun driveLive(
-    judge: PerformanceJudge,
-    score: Score,
-    timing: TickTiming,
-    played: List<PlayedNote>,
-    frameNanos: Long = 10_000_000L,
-): SessionResult {
-    var state = judge.begin(score, timing)
-    val queue = played.sortedBy { it.atNanos }.toMutableList()
-    val lastExpected = score.attackedNotes.maxOfOrNull { timing.nanosFor(it.onset) } ?: 0L
-    val lastPlayed = played.maxOfOrNull { it.atNanos } ?: 0L
-    val endNanos = maxOf(lastExpected, lastPlayed) + ms(600.0)
-    var now = 0L
-    while (now <= endNanos) {
-        while (queue.isNotEmpty() && queue.first().atNanos <= now) {
-            val note = queue.removeFirst()
-            state = judge.advanceTime(state, timing.ticksAt(note.atNanos)).first
-            state = judge.advance(state, note).first
-        }
-        state = judge.advanceTime(state, timing.ticksAt(now)).first
-        now += frameNanos
+/** The same map moved bodily later, standing in for the leg a pause appends. */
+private fun TickTiming.shiftedBy(shiftNanos: Long): TickTiming {
+    val original = this
+    return object : TickTiming {
+        override fun nanosFor(position: Ticks): Long = original.nanosFor(position) + shiftNanos
+
+        override fun ticksAt(nanos: Long): Ticks = original.ticksAt(nanos - shiftNanos)
+
+        override fun elapsedNanosAt(position: Ticks): Long = original.elapsedNanosAt(position)
     }
-    return judge.finish(judge.advanceTime(state, timing.ticksAt(endNanos)).first)
 }

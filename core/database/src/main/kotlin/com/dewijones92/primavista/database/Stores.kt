@@ -43,6 +43,13 @@ public data class StoredSession(
         get() = if (notesExpected == 0) 0.0 else correct.toDouble() / notesExpected
 }
 
+/** One stored latency measurement. Per route, because a headset and a speaker are not one path. */
+public data class RouteLatency(
+    val route: AudioRoute,
+    val latency: InputLatency,
+    val measuredAtEpochMillis: Long,
+)
+
 /** A known score. [ScoreSummary] is reused rather than re-declared: the scheduler reads it directly. */
 public data class RepertoireEntry(
     val summary: ScoreSummary,
@@ -74,16 +81,19 @@ public data class PracticeSettings(
  * not lose what was practised, and a session only written at the end is lost by definition when
  * the process dies mid-piece. Calling it twice for the same [StoredSession.id] replaces the
  * earlier write rather than duplicating it.
+ *
+ * Every read returns a [StoredReading] rather than a list: a refusal that arrives as an empty
+ * list is the app telling Dewi he has not practised. See `.claude/CODE-NOTES.md`.
  */
 public interface SessionStore {
     public suspend fun save(session: StoredSession, judgements: List<NoteJudgement>)
 
-    public suspend fun recent(limit: Int = DEFAULT_RECENT_LIMIT): List<StoredSession>
+    public suspend fun recent(limit: Int = DEFAULT_RECENT_LIMIT): StoredReading<List<StoredSession>>
 
     /** Sessions saved at pause and never finished — what to offer resuming after a reboot. */
-    public suspend fun unfinished(): List<StoredSession>
+    public suspend fun unfinished(): StoredReading<List<StoredSession>>
 
-    public suspend fun judgements(id: SessionId): List<NoteJudgement>
+    public suspend fun judgements(id: SessionId): StoredReading<List<NoteJudgement>>
 
     public suspend fun delete(id: SessionId)
 
@@ -95,10 +105,10 @@ public interface SessionStore {
 public interface RepertoireStore {
     public suspend fun upsert(entry: RepertoireEntry)
 
-    public suspend fun all(): List<RepertoireEntry>
+    public suspend fun all(): StoredReading<List<RepertoireEntry>>
 
-    /** Exactly what `PracticeScheduler.next` wants for its `available` argument. */
-    public suspend fun summaries(): List<ScoreSummary>
+    /** Exactly what `PracticeScheduler.next` wants for its `available` argument, once read. */
+    public suspend fun summaries(): StoredReading<List<ScoreSummary>>
 
     public suspend fun forget(id: ScoreId)
 }
@@ -110,8 +120,14 @@ public interface SettingsStore {
 
     public suspend fun save(settings: PracticeSettings)
 
-    /** Null when this route has never been measured — an unmeasured latency must not read as 0ms. */
-    public suspend fun latency(route: AudioRoute): InputLatency?
+    /**
+     * `Readable(null)` is a route nobody has measured — an unmeasured latency must not read as
+     * 0ms — and `Unreadable` is a stored row this build could not read. Different situations.
+     */
+    public suspend fun latency(route: AudioRoute): StoredReading<InputLatency?>
+
+    /** Every route that has ever been measured, through the same refusal path as [latency]. */
+    public suspend fun latencies(): StoredReading<List<RouteLatency>>
 
     public suspend fun recordLatency(route: AudioRoute, latency: InputLatency, atEpochMillis: Long)
 }

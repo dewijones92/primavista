@@ -6,6 +6,33 @@ import com.dewijones92.primavista.score.KeySignature
 import com.dewijones92.primavista.score.Staff
 import com.dewijones92.primavista.score.TimeSignature
 
+/** What a stored [DifficultySpec] turned out to be. See `.claude/CODE-NOTES.md`. */
+public sealed interface SpecReading {
+    public data class Readable(val spec: DifficultySpec) : SpecReading
+
+    /** [reason] is what a diagnostics report prints, so a lost origin is never just a blank. */
+    public data class Unreadable(val reason: String) : SpecReading
+}
+
+private const val FIELD_SEPARATOR = ";"
+private const val NAME_SEPARATOR = "="
+private const val NAMED_PARTS = 2
+
+/**
+ * An unknown *name* is ignored on purpose; a field that is not `name=value` at all, or a name that
+ * appears twice, is not. See `.claude/CODE-NOTES.md`.
+ */
+private fun namedFields(encoded: String): Map<String, String> {
+    val entries = encoded.split(FIELD_SEPARATOR).map { field ->
+        val parts = field.split(NAME_SEPARATOR, limit = NAMED_PARTS)
+        require(parts.size == NAMED_PARTS) { "'$field' is not a name${NAME_SEPARATOR}value field" }
+        parts.first() to parts.last()
+    }
+    val repeated = entries.groupingBy { it.first }.eachCount().filterValues { it > 1 }.keys
+    require(repeated.isEmpty()) { "stored spec gives $repeated more than one value" }
+    return entries.toMap()
+}
+
 /**
  * The stored form of a [DifficultySpec]. With the seed, this is what makes a generated session
  * replayable from a report — see `.claude/CODE-NOTES.md`.
@@ -13,11 +40,8 @@ import com.dewijones92.primavista.score.TimeSignature
 public object DifficultyCodec {
     public const val VERSION: Int = 1
 
-    private const val FIELD_SEPARATOR = ";"
-    private const val NAME_SEPARATOR = "="
     private const val LIST_SEPARATOR = ","
     private const val PAIR_SEPARATOR = ">"
-    private const val NAMED_PARTS = 2
 
     private const val VERSION_FIELD = "v"
     private const val STAVES = "staves"
@@ -54,13 +78,15 @@ public object DifficultyCodec {
     ).joinToString(FIELD_SEPARATOR) { "${it.first}$NAME_SEPARATOR${it.second}" }
 
     /** Null when this build cannot rebuild the spec, so the row is kept and the loss is logged. */
-    public fun decode(encoded: String): DifficultySpec? = runCatching { decodeOrThrow(encoded) }.getOrNull()
+    public fun decode(encoded: String): DifficultySpec? = (read(encoded) as? SpecReading.Readable)?.spec
+
+    /** Every unreadable spec comes back with the reason, never as a bare absence. */
+    public fun read(encoded: String): SpecReading =
+        runCatching { SpecReading.Readable(decodeOrThrow(encoded)) }
+            .getOrElse { SpecReading.Unreadable(it.message ?: it.toString()) }
 
     private fun decodeOrThrow(encoded: String): DifficultySpec {
-        val fields = encoded.split(FIELD_SEPARATOR)
-            .map { it.split(NAME_SEPARATOR, limit = NAMED_PARTS) }
-            .filter { it.size == NAMED_PARTS }
-            .associate { it.first() to it.last() }
+        val fields = namedFields(encoded)
         require(fields.int(VERSION_FIELD) == VERSION) {
             "stored spec is version ${fields.int(VERSION_FIELD)}, this build reads $VERSION"
         }
@@ -105,10 +131,13 @@ public object DifficultyCodec {
         return if (raw.isEmpty()) emptyList() else raw.split(LIST_SEPARATOR).map(item)
     }
 
-    private fun <V> Map<String, String>.perStaff(field: String, value: (String) -> V): Map<Staff, V> =
-        items(field) { entry ->
+    private fun <V> Map<String, String>.perStaff(field: String, value: (String) -> V): Map<Staff, V> {
+        val pairs = items(field) { entry ->
             val parts = entry.split(PAIR_SEPARATOR, limit = NAMED_PARTS)
             require(parts.size == NAMED_PARTS) { "'$entry' is not a staff-keyed value" }
             staffOf(parts.first()) to value(parts.last())
-        }.toMap()
+        }
+        require(pairs.distinctBy { it.first }.size == pairs.size) { "'$field' names a staff twice" }
+        return pairs.toMap()
+    }
 }

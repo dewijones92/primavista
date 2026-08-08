@@ -26,12 +26,16 @@ public fun interface NanoClock {
  * `Conductor` to the judge, and a session containing a pause then re-judged *differently from a
  * report of itself* — every Correct became an Extra plus a Missed, because the mapping had moved on
  * since the notes were played. A snapshot has to record the pauses that happened, not the transport
- * that is still happening.
+ * that is still happening. A session that pauses gets a *newer* snapshot through
+ * [PerformanceJudge.retime]; it never gets a map that keeps moving.
  */
 public interface TickTiming {
     public fun nanosFor(position: Ticks): Long
 
     public fun ticksAt(nanos: Long): Ticks
+
+    /** Music sounded up to [position], excluding pauses. Every judged interval. See .claude/CODE-NOTES.md. */
+    public fun elapsedNanosAt(position: Ticks): Long
 }
 
 public enum class TransportState { Idle, CountingIn, Running, Paused, Finished }

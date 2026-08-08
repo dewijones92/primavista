@@ -24,6 +24,12 @@ internal fun openTestDatabase(): PrimaVistaDatabase =
         .addCallback(PrimaVistaDatabase.ForeignKeysOn)
         .build()
 
+/** A refusal in a test that expected data is a failure with its reason, never a silent empty list. */
+internal fun <T> StoredReading<T>.readOrFail(): T = when (this) {
+    is StoredReading.Readable -> value
+    is StoredReading.Unreadable -> throw AssertionError("the read of $what was refused: $reason")
+}
+
 /** Reads the pragma back, because a cascade test passes silently when enforcement is off. */
 internal fun PrimaVistaDatabase.foreignKeysOn(): Boolean =
     query("PRAGMA foreign_keys", emptyArray()).use { cursor ->

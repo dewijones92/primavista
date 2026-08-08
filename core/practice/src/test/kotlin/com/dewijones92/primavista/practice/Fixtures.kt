@@ -81,6 +81,39 @@ internal fun startedTiming(tempoBpm: Int = TEST_TEMPO_BPM): TickTiming =
 internal fun perfectPerformance(score: Score, timing: TickTiming): List<PlayedNote> =
     score.attackedNotes.map { PlayedNote(midi = it.pitch.midi, atNanos = timing.nanosFor(it.onset)) }
 
+internal const val FRAME_NANOS: Long = 10_000_000L
+
+/**
+ * The live path exactly as `PracticeViewModel` drives it, and the only one in these tests: sample
+ * the Conductor on a frame clock, fold an input in at its own timestamp, re-time on resume.
+ */
+internal class LiveSession(
+    private val judge: PerformanceJudge,
+    private val clock: FakeClock,
+    private val conductor: Conductor,
+    score: Score,
+) {
+    private var state: JudgeState = judge.begin(score, conductor.timingSnapshot())
+
+    fun runTo(nanos: Long) {
+        while (clock.nowNanos() < nanos) {
+            clock.advance(minOf(FRAME_NANOS, nanos - clock.nowNanos()))
+            state = judge.advanceTime(state, conductor.position()).first
+        }
+    }
+
+    fun play(note: PlayedNote) {
+        runTo(note.atNanos)
+        state = judge.advance(state, note).first
+    }
+
+    fun retime() {
+        state = judge.retime(state, conductor.timingSnapshot())
+    }
+
+    fun finish(): SessionResult = judge.finish(state)
+}
+
 internal val polySource: AnswerSource = FakeSource("tap", Polyphony.Poly)
 
 internal fun judged(outcome: JudgeOutcome): SessionResult =

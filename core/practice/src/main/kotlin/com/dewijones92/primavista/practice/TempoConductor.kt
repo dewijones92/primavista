@@ -90,6 +90,8 @@ public class TempoConductor(
         return if (phase == Phase.Paused && ticks.value > frozenTicks) Ticks(frozenTicks) else ticks
     }
 
+    override fun elapsedNanosAt(position: Ticks): Long = timeline.elapsedNanosAt(position)
+
     private fun relayTo(next: List<TempoLeg>) {
         legs = next.toList()
         timeline = TempoTimeline(map, legs)
@@ -116,6 +118,8 @@ internal class TempoTimeline(
         val next = legs.getOrNull(index + 1) ?: return Ticks(ticks)
         return Ticks(minOf(ticks, next.fromTicks))
     }
+
+    override fun elapsedNanosAt(position: Ticks): Long = map.nanosOfTicks(position.value)
 
     private fun startNanosOf(leg: TempoLeg): Long = leg.originNanos + map.nanosOfTicks(leg.fromTicks)
 

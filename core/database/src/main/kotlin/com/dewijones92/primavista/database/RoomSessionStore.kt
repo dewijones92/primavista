@@ -15,6 +15,8 @@ public class RoomSessionStore(
 ) : SessionStore {
     private val sessions: SessionDao = database.sessions()
     private val noteVerdicts: NoteVerdictDao = database.noteVerdicts()
+    private val lostOrigins = UnreadableRowLog(diag, TAG, "sessionOriginsUnreadable")
+    private val lostVerdicts = UnreadableRowLog(diag, TAG, "verdictRowsUnreadable")
 
     override suspend fun save(session: StoredSession, judgements: List<NoteJudgement>) {
         database.withTransaction {
@@ -26,18 +28,28 @@ public class RoomSessionStore(
         diag.counted(TAG, "verdictRowsWritten", judgements.size)
     }
 
-    override suspend fun recent(limit: Int): List<StoredSession> =
-        sessions.recent(limit).map { it.toStored() }.onEach { warnIfOriginLost(it) }
+    override suspend fun recent(limit: Int): StoredReading<List<StoredSession>> =
+        diag.readOrRefuse(TAG, "the $limit most recent sessions") {
+            sessions.recent(limit).map { it.toStored() }.onEach { warnIfOriginLost(it) }
+        }
 
-    override suspend fun unfinished(): List<StoredSession> =
-        sessions.unfinished().map { it.toStored() }.onEach { warnIfOriginLost(it) }
+    override suspend fun unfinished(): StoredReading<List<StoredSession>> =
+        diag.readOrRefuse(TAG, "the unfinished sessions") {
+            sessions.unfinished().map { it.toStored() }.onEach { warnIfOriginLost(it) }
+        }
 
-    override suspend fun judgements(id: SessionId): List<NoteJudgement> {
+    override suspend fun judgements(id: SessionId): StoredReading<List<NoteJudgement>> = diag.readOrRefuse(
+        TAG,
+        "the verdicts of session=${id.value}",
+    ) {
         val readings = noteVerdicts.forSession(id.value).map { it.read() }
         readings.filterIsInstance<VerdictRowReading.Unreadable>().forEach {
-            diag.event(TAG, "session=${id.value} row=${it.rowId} unreadable and skipped: ${it.reason}")
+            lostVerdicts.report(
+                "${id.value}/${it.rowId}",
+                "session=${id.value} row=${it.rowId} unreadable and skipped: ${it.reason}",
+            )
         }
-        return readings.filterIsInstance<VerdictRowReading.Readable>().map { it.judgement }
+        readings.filterIsInstance<VerdictRowReading.Readable>().map { it.judgement }
     }
 
     override suspend fun delete(id: SessionId) {
@@ -47,7 +59,10 @@ public class RoomSessionStore(
 
     private fun warnIfOriginLost(session: StoredSession) {
         if (session.origin == null) {
-            diag.event(TAG, "session=${session.id.value} origin unreadable: ${session.originDescriptor}")
+            lostOrigins.report(
+                session.id.value,
+                "session=${session.id.value} origin unreadable: ${session.originDescriptor}",
+            )
         }
     }
 

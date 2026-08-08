@@ -1,5 +1,6 @@
 package com.dewijones92.primavista.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -62,6 +63,7 @@ public data class NoteVerdictEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
 )
 
+/** [repetition] is the SM-2 rung and is stored because it cannot be re-derived — see CODE-NOTES. */
 @Entity(tableName = "skill_states")
 public data class SkillStateEntity(
     @PrimaryKey val skillKey: String,
@@ -69,6 +71,7 @@ public data class SkillStateEntity(
     val dueAtEpochMillis: Long,
     val attempts: Int,
     val lapses: Int,
+    @ColumnInfo(defaultValue = "0") val repetition: Int = 0,
 )
 
 @Entity(tableName = "repertoire")

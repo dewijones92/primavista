@@ -57,7 +57,7 @@ class RepertoireStoreTest {
         val entry = entry("bwv-anh-114", "Minuet in G")
         store.upsert(entry)
 
-        assertEquals(entry, store.all().single())
+        assertEquals(entry, store.all().readOrFail().single())
     }
 
     @Test
@@ -65,7 +65,7 @@ class RepertoireStoreTest {
         store.upsert(entry("b", "Second"))
         store.upsert(entry("a", "First"))
 
-        assertEquals(listOf("First", "Second"), store.summaries().map { it.title })
+        assertEquals(listOf("First", "Second"), store.summaries().readOrFail().map { it.title })
     }
 
     @Test
@@ -73,7 +73,7 @@ class RepertoireStoreTest {
         store.upsert(entry("bwv-anh-114", "Minuet in G"))
         store.upsert(entry("bwv-anh-114", "Menuet in G major"))
 
-        assertEquals(listOf("Menuet in G major"), store.all().map { it.summary.title })
+        assertEquals(listOf("Menuet in G major"), store.all().readOrFail().map { it.summary.title })
     }
 
     @Test
@@ -82,6 +82,19 @@ class RepertoireStoreTest {
 
         store.forget(ScoreId("bwv-anh-114"))
 
-        assertTrue(store.all().isEmpty())
+        assertTrue(store.all().readOrFail().isEmpty())
+    }
+
+    /** The scheduler must not be handed "no repertoire" when the repertoire merely would not read. */
+    @Test
+    fun aCorruptRowRefusesBothTheEntriesAndTheSummariesTheSchedulerAsksFor() = runBlocking {
+        store.upsert(entry("bwv-anh-114", "Minuet in G"))
+        database.openHelper.writableDatabase
+            .execSQL("UPDATE repertoire SET polyphony = 'Duet' WHERE scoreId = 'bwv-anh-114'")
+
+        assertTrue(store.all() is StoredReading.Unreadable)
+        val summaries = store.summaries()
+        assertTrue("the scheduler was handed an empty corpus", summaries is StoredReading.Unreadable)
+        assertTrue((summaries as StoredReading.Unreadable).reason.contains("Duet"))
     }
 }

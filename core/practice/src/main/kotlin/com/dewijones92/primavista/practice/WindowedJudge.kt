@@ -38,13 +38,16 @@ public class WindowedJudge(
         Fold(
             score = score,
             timing = timing,
-            windows = Windows(timing, windowTicks, minWindowNanos, maxWindowNanos),
+            windows = Windows(windowTicks, minWindowNanos, maxWindowNanos),
             expected = score.attackedNotes.mapIndexed { index, note ->
                 Expectation(index = index, onset = note.onset, midi = note.pitch.midi)
             },
             settled = emptySet(),
             judgements = emptyList(),
         )
+
+    override fun retime(state: JudgeState, timing: TickTiming): JudgeState =
+        state.asFold().copy(timing = timing)
 
     override fun advance(state: JudgeState, note: PlayedNote): Pair<JudgeState, List<NoteJudgement>> {
         val fold = state.asFold()
@@ -66,10 +69,9 @@ public class WindowedJudge(
 
     override fun advanceTime(state: JudgeState, position: Ticks): Pair<JudgeState, List<NoteJudgement>> {
         val fold = state.asFold()
-        val nowNanos = fold.timing.nanosFor(position)
         val closed = fold.expected.filter { expectation ->
             expectation.index !in fold.settled &&
-                nowNanos > fold.timing.nanosFor(expectation.onset) + fold.windows.at(expectation.onset)
+                fold.timing.musicBetween(expectation.onset, position) > fold.windowAt(expectation.onset)
         }
         if (closed.isEmpty()) return fold to emptyList()
         val judgements = closed.map { NoteJudgement.OfNote(it.index, Verdict.Missed) }
@@ -101,7 +103,7 @@ public class WindowedJudge(
             state = advanceTime(state, timing.ticksAt(note.atNanos)).first
             state = advance(state, note).first
         }
-        val closing = closingPosition(score, timing, played, maxWindowNanos)
+        val closing = closingPosition(score, timing, played, maxWindowNanos, windowTicks)
         return JudgeOutcome.Judged(finish(advanceTime(state, closing).first))
     }
 }
@@ -110,13 +112,12 @@ private data class Expectation(val index: Int, val onset: Ticks, val midi: Midi)
 
 /** Tempo-relative matching half-width, asked per onset. See .claude/CODE-NOTES.md. */
 private class Windows(
-    private val timing: TickTiming,
     private val windowTicks: Ticks,
     private val minNanos: Long,
     private val maxNanos: Long,
 ) {
-    fun at(onset: Ticks): Long =
-        (timing.nanosFor(onset + windowTicks) - timing.nanosFor(onset)).coerceIn(minNanos, maxNanos)
+    fun at(timing: TickTiming, onset: Ticks): Long =
+        timing.musicBetween(onset, onset + windowTicks).coerceIn(minNanos, maxNanos)
 }
 
 private data class Fold(
@@ -131,12 +132,17 @@ private data class Fold(
 private fun JudgeState.asFold(): Fold =
     this as? Fold ?: error("judge state came from a different PerformanceJudge implementation")
 
+private fun TickTiming.musicBetween(from: Ticks, to: Ticks): Long =
+    elapsedNanosAt(to) - elapsedNanosAt(from)
+
+private fun Fold.windowAt(onset: Ticks): Long = windows.at(timing, onset)
+
 private fun deltaNanos(fold: Fold, expectation: Expectation, note: PlayedNote): Long =
-    note.atNanos - fold.timing.nanosFor(expectation.onset)
+    fold.timing.musicBetween(expectation.onset, fold.timing.ticksAt(note.atNanos))
 
 private fun bestMatch(fold: Fold, note: PlayedNote): Expectation? {
     val candidates = fold.expected.filter {
-        it.index !in fold.settled && abs(deltaNanos(fold, it, note)) <= fold.windows.at(it.onset)
+        it.index !in fold.settled && abs(deltaNanos(fold, it, note)) <= fold.windowAt(it.onset)
     }
     if (candidates.isEmpty()) return null
     val samePitch = candidates.filter { it.midi == note.midi }
@@ -177,8 +183,12 @@ private fun closingPosition(
     timing: TickTiming,
     played: List<PlayedNote>,
     windowNanos: Long,
+    windowTicks: Ticks,
 ): Ticks {
-    val lastExpected = score.attackedNotes.maxOfOrNull { timing.nanosFor(it.onset) } ?: 0L
-    val lastPlayed = played.maxOfOrNull { it.atNanos } ?: 0L
-    return timing.ticksAt(maxOf(lastExpected, lastPlayed) + windowNanos + Nanos.PER_MILLI)
+    val lastExpected = score.attackedNotes.maxOfOrNull { it.onset.value } ?: 0L
+    val lastPlayed = played.maxOfOrNull { timing.ticksAt(it.atNanos).value } ?: 0L
+    val from = Ticks(maxOf(lastExpected, lastPlayed))
+    val step = if (windowTicks.value > 0) windowTicks else Ticks(1)
+    val perStep = timing.musicBetween(from, from + step).coerceAtLeast(1L)
+    return from + step * ((windowNanos / perStep).toInt() + 1)
 }

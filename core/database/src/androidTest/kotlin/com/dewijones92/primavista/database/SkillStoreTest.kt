@@ -3,7 +3,6 @@ package com.dewijones92.primavista.database
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.dewijones92.primavista.practice.SkillOutcome
 import com.dewijones92.primavista.practice.SkillState
-import com.dewijones92.primavista.practice.SkillStore
 import com.dewijones92.primavista.score.Clef
 import com.dewijones92.primavista.score.PitchBand
 import com.dewijones92.primavista.score.SkillTag
@@ -18,7 +17,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class SkillStoreTest {
     private lateinit var database: PrimaVistaDatabase
-    private lateinit var store: SkillStore
+    private lateinit var store: RoomSkillStore
     private val ruleCalls = mutableListOf<List<SkillState>>()
 
     private val ledgerLines = SkillTag.LegerLines(Clef.Bass, 2, above = false)
@@ -36,6 +35,11 @@ class SkillStoreTest {
                 dueAtEpochMillis = nowEpochMillis + 1_000L,
                 attempts = (existing?.attempts ?: 0) + outcome.attempts,
                 lapses = (existing?.lapses ?: 0) + (outcome.attempts - outcome.cleanAttempts),
+                repetition = if (outcome.cleanAttempts == outcome.attempts) {
+                    (existing?.repetition ?: 0) + 1
+                } else {
+                    0
+                },
             )
         }
     }
@@ -72,6 +76,25 @@ class SkillStoreTest {
         assertEquals(listOf(0, 1), ruleCalls.map { it.size })
     }
 
+    /**
+     * The rung is only ever read back, never recomputed, so a store that drops it hands the rule a
+     * skill that looks brand new. See `.claude/CODE-NOTES.md`.
+     */
+    @Test
+    fun theRungClimbsAcrossSessionsBecauseItIsStoredRatherThanRederived() = runBlocking {
+        repeat(3) { store.record(listOf(SkillOutcome(ledgerLines, attempts = 2, cleanAttempts = 2)), 0L) }
+
+        assertEquals(3, store.states().single().repetition)
+    }
+
+    @Test
+    fun aLapseTakesTheStoredRungBackDownRatherThanLeavingItStale() = runBlocking {
+        store.record(listOf(SkillOutcome(ledgerLines, attempts = 2, cleanAttempts = 2)), 0L)
+        store.record(listOf(SkillOutcome(ledgerLines, attempts = 2, cleanAttempts = 0)), 10L)
+
+        assertEquals(0, store.states().single().repetition)
+    }
+
     @Test
     fun statesForSkillsTheSessionDidNotTouchAreLeftAlone() = runBlocking {
         store.record(listOf(SkillOutcome(middleTreble, attempts = 1, cleanAttempts = 1)), nowEpochMillis = 0L)
@@ -101,6 +124,22 @@ class SkillStoreTest {
     }
 
     /**
+     * The row stays on disk, so it comes back on every read. See `.claude/CODE-NOTES.md` for why
+     * that must be counted rather than logged each time.
+     */
+    @Test
+    fun anUnreadableRowIsNamedOnceAndCountedEveryTimeItComesBack() = runBlocking {
+        val diag = RecordingDiag()
+        val counting = RoomSkillStore(database, halvingRule, diag)
+        database.skillStates().upsertAll(listOf(SkillStateEntity("somethingFromTheFuture|4", 0.5, 0L, 1, 0)))
+
+        repeat(4) { counting.states() }
+
+        assertEquals(1, diag.lines.count { it.contains("somethingFromTheFuture") })
+        assertEquals(4, diag.counts["skillRowsUnreadable"])
+    }
+
+    /**
      * A v1 leger-lines row must not be re-read as an above-the-staff skill, and must not be
      * deleted either: a later build that learns to read it can still recover the strength.
      */
@@ -114,5 +153,45 @@ class SkillStoreTest {
         assertEquals(0.0, store.states().single().strength, 1e-9)
         assertEquals(2, database.skillStates().count())
         assertEquals(40, database.skillStates().byKey("legerLines|Bass|2")?.attempts)
+    }
+
+    /**
+     * The bulk read is now wrapped like every other one, so a read that fails outright refuses
+     * instead of taking the Progress screen down with it.
+     */
+    @Test
+    fun aReadThatFailsOutrightRefusesRatherThanCrashingTheScreen() = runBlocking {
+        val diag = RecordingDiag()
+        val refusing = RoomSkillStore(database, halvingRule, diag)
+        database.close()
+
+        val reading = refusing.storedStates()
+
+        assertTrue("expected a refusal, got $reading", reading is StoredReading.Unreadable)
+        assertEquals(emptyList<SkillState>(), refusing.states())
+        assertTrue(diag.lines.toString(), diag.lines.any { it.contains("could not be read at all") })
+        assertTrue(diag.lines.toString(), diag.lines.any { it.contains("every skill will look brand new") })
+    }
+
+    /**
+     * A fold onto states this build could not read would upsert beginners' figures over mature
+     * ones — losing exactly what docs/spec.md I4 exists to keep. It must write nothing at all.
+     */
+    @Test
+    fun aFoldThatFailsWritesNothingAndLeavesTheStoredStrengthsAlone() = runBlocking {
+        store.record(listOf(SkillOutcome(ledgerLines, attempts = 2, cleanAttempts = 2)), nowEpochMillis = 0L)
+        val before = store.states().single()
+
+        val diag = RecordingDiag()
+        val exploding = RoomSkillStore(database, SkillUpdateRule { _, _, _ -> error("the fold blew up") }, diag)
+        exploding.record(listOf(SkillOutcome(middleTreble, attempts = 1, cleanAttempts = 0)), nowEpochMillis = 10L)
+
+        assertEquals(listOf(before), store.states())
+        assertTrue(diag.lines.toString(), diag.lines.any { it.contains("nothing written") })
+    }
+
+    @Test
+    fun aFirstRunDeviceReadsAsAReadableEmptyListNotARefusal() = runBlocking {
+        assertEquals(StoredReading.Readable(emptyList<SkillState>()), store.storedStates())
     }
 }

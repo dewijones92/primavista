@@ -29,13 +29,19 @@ public class RoomSettingsStore(
         )
     }
 
-    override suspend fun latency(route: AudioRoute): InputLatency? {
-        val stored = latencyDao.byRoute(route.id)
-        if (stored == null) {
-            diag.event(TAG, "no latency stored for route=${route.id}: verdicts on it carry an unmeasured bias")
+    override suspend fun latency(route: AudioRoute): StoredReading<InputLatency?> =
+        diag.readOrRefuse(TAG, "the latency of route=${route.id}") {
+            val stored = latencyDao.byRoute(route.id)
+            if (stored == null) {
+                diag.event(TAG, "no latency stored for route=${route.id}: verdicts on it carry an unmeasured bias")
+            }
+            stored?.toLatency()
         }
-        return stored?.toLatency()
-    }
+
+    override suspend fun latencies(): StoredReading<List<RouteLatency>> =
+        diag.readOrRefuse(TAG, "the stored audio-route latencies") {
+            latencyDao.all().map { it.toRouteLatency() }.also { diag.event(TAG, describeRoutes(it)) }
+        }
 
     override suspend fun recordLatency(route: AudioRoute, latency: InputLatency, atEpochMillis: Long) {
         latencyDao.upsert(
@@ -50,6 +56,12 @@ public class RoomSettingsStore(
             TAG,
             "latency stored route=${route.id} lat=${latency.millis}ms/${latency.provenance} at=$atEpochMillis",
         )
+    }
+
+    private fun describeRoutes(routes: List<RouteLatency>): String {
+        val measured = routes.count { it.latency.provenance == InputLatency.Provenance.Measured }
+        return "read routes=${routes.size} measured=$measured " +
+            "figures=[${routes.joinToString { "${it.route.id}=${it.latency.millis}ms/${it.latency.provenance}" }}]"
     }
 
     private companion object {

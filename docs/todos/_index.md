@@ -1,7 +1,7 @@
 ---
 title: Backlog
 kind: index
-updated: 2026-08-07
+updated: 2026-08-08
 ---
 
 # Backlog
@@ -18,6 +18,10 @@ never silently abandoned.
 | [midi-input](midi-input.md) | medium | input | The third `AnswerSource` adapter: exact, zero-ambiguity, and the only honest route to judging polyphony |
 | [diagnostics-report](diagnostics-report.md) | high | ui | Spec I7 is currently proven by nothing; a report has to be able to reconstruct a session's verdicts |
 
+| [retime-the-judge-after-a-pause](retime-the-judge-after-a-pause.md) | high | practice | Both halves landed, then a review found the fix re-times only notes starting *after* the pause — so a note overdue but still in its window is Missed and the note Dewi then plays is an Extra, debiting a skill for a note he got right |
+
 ## Done
 
-*Nothing yet — the repo was scaffolded 2026-08-07.*
+| Item | Area | Outcome |
+|---|---|---|
+| — | — | *nothing closed outright yet* |

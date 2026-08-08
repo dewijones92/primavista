@@ -1,13 +1,20 @@
 ---
 title: Re-time the judge after a pause
 kind: todo
-status: planned
+status: done
 priority: high
 area: practice
-updated: 2026-08-07
+updated: 2026-08-08
 ---
 
 # Re-time the judge after a pause
+
+**Done 2026-08-08**, both halves. `PerformanceJudge.retime` landed in `:core:practice` and
+`PracticeViewModel.resume()` calls it (`PracticeViewModel.kt:235`), logging `judge retimed` with the
+position.
+
+An adversarial review then found the fix incomplete in one direction — see *The gap the first fix
+left* below. Treat that as the live part of this item.
 
 ## The problem
 
@@ -31,23 +38,45 @@ became an `Extra` plus a `Missed`. Reproducibility from a report is what docs/sp
 So the requirement is both things at once: the judge must see a map that includes the pauses that
 have **already happened**, and must not see one that keeps changing under a replay.
 
-## What to do
-
-Add to the contract:
+## What was done
 
 ```kotlin
 public fun retime(state: JudgeState, timing: TickTiming): JudgeState
 ```
 
-It keeps everything the fold has settled and swaps in the newer map. `PracticeViewModel.resume()`
-then calls it with `conductor.timingSnapshot()`. Replay is unaffected — a stored session replays from
-its final snapshot, which already contains every leg.
+`WindowedJudge` implements it as a one-field copy of the fold. Getting there needed the timing to
+live in exactly one place: `Windows` had captured its own reference to the map, so swapping
+`Fold.timing` alone would have left every window width measured against the stale map. `Windows` now
+depends only on the tolerances and is handed the map per call.
 
-## Done when
+Replay is unaffected — a stored session replays from its final snapshot, which already contains every
+leg.
 
-- A test plays a perfect performance **across a pause**, driving the live fold (not `judgeAll`), and
-  asserts every note is `Correct` — it fails today on the notes after the resume.
-- The existing re-judge-from-snapshot test still passes, so the fix has not traded reproducibility
-  for liveness.
-- `PracticeViewModel.resume()` re-times, and the diagnostics line for a resume records the new
-  origin so a report can show which map was in force for which note.
+## Proven by
+
+- `TempoConductorTest` — *"a perfect performance played live across two pauses is all correct"*, which
+  drives the live fold (`advance`/`advanceTime`) against a real `TempoConductor`, not `judgeAll`. It
+  fails without the fix (notes after the resume come back as `Extra` + `Missed`, 2 correct of 4), and
+  fails again if only the first resume re-times, so it holds *every* resume rather than the first.
+- `WindowedJudgeTest` — *"re-timing swaps the map without disturbing what is already settled"*: a
+  verdict settled before the pause survives untouched while the next note is measured against the
+  newer map.
+- `TempoConductorTest` — *"a perfect performance across a pause re-judges identically from its own
+  snapshot"* still passes, so liveness was not traded for reproducibility.
+
+## The gap the first fix left
+
+`retime` re-times only the notes whose onset is strictly **after** the pause position. So a note that
+was already overdue but **still inside its matching window** when the phone rang keeps its pre-pause
+wall time: on resume it is `Missed` on the very first tick, and the note Dewi then plays becomes an
+`Extra`. Reproduced at 3 correct of 4 — one `Missed` plus one `Extra` for a note played 20ms after
+picking the piece back up.
+
+That is verbatim the failure this whole item exists to remove, and it is worse than the original in
+one respect: it debits the skill for a note he got **right**. It was left rather than patched because
+it needs a decision about crediting pause duration to expectations that are unsettled at the moment
+of the pause, and the principle to decide by is the one the spec turns on — the app must not blame
+Dewi for its own bookkeeping. A note he had not yet missed when he paused has not been missed.
+
+`.claude/CODE-NOTES.md` stated the opposite assumption in writing ("a note not yet played is about to
+be judged live anyway"); that entry is wrong and is being corrected with the fix.

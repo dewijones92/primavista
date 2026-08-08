@@ -75,17 +75,104 @@ unification in this repo. If they ever diverge, that is a design failure.
 - **Testing pyramid**: many fast JVM unit tests; fewer integration tests; few
   instrumented/UI tests. New behaviour lands with tests. The pure-JVM modules are where
   the correctness lives, and they are cheap to test, so there is no excuse.
-- **Strictly DRY** — knowledge lives in exactly one place: versions and SDK levels only
-  in `gradle/libs.versions.toml`; Android build defaults only in the root build's
-  `androidDefaults`; shared code in `:lib:common`, never copy-pasted. A deliberate
-  duplication must be recorded here with its reason.
-- **SOLID**, small focused types, dependencies point inward. The pure-JVM modules have no
-  Android dependency and leakage is a compile error.
+- **Strictly DRY, and it is a hard law rather than a preference.** Knowledge lives in
+  exactly one place: versions and SDK levels only in `gradle/libs.versions.toml`; Android
+  build defaults only in the root build's `androidDefaults`; shared code in `:lib:common`,
+  never copy-pasted. Before writing anything that resembles something already here, go and
+  look for it — this repo has already shipped two bugs that were purely a second copy of a
+  decision. `specTargeting` existed twice and the copies disagreed by nearly three octaves,
+  with the wrong one live; the polyphony test existed twice and the weaker one was the gate.
+  Both compiled, both had tests, and both were wrong.
+
+  So when you catch yourself about to duplicate: **factor it, or record the duplication here
+  with its reason.** Those are the only two options. A duplication nobody wrote down is a
+  future bug with a countdown on it.
+- **SOLID** — spelled out below, because each letter has already earned its place here by
+  catching or causing something real.
 - **Maximum compile-time safety**: sealed hierarchies, value classes over primitives
   (`Pitch`, `Midi`, `Hertz`, `Ticks` are not `Int`s and not each other), exhaustive
   `when`, illegal states unrepresentable. A `when` over inputs or clefs must fail to
   compile when a third is added.
 - CI must stay green; quality gates (detekt, lint, tests, Kover) block merges.
+
+## SOLID, in this codebase's own terms
+
+Not a recitation — every letter below is illustrated by something that actually happened in
+this repo, and that is the reason it is worth keeping.
+
+- **S — Single responsibility.** Each seam answers exactly one question, and the question is
+  written on it: `Conductor` answers *where in the music are we*, `PerformanceJudge` answers
+  *was that right*, `StaffLayout` answers *where does every glyph go*. The pause bug was an
+  SRP violation before it was a timing bug: the judge had been handed the live `Conductor`,
+  so a type whose job was *deciding* was also able to *ask what time it is*, and the moment
+  the transport moved the verdicts moved with it. Splitting the mapping out fixed the
+  responsibility and the bug in the same change.
+
+- **O — Open for extension, closed for modification.** Adding MIDI is a new `AnswerSource`
+  adapter and **zero** changes downstream; adding a clef is one entry in `Clef` because the
+  layout engine reads `referenceDiatonicIndex` instead of branching. The test of this is
+  blunt and worth applying: *if adding the next input or the next clef requires edits
+  outside its own class, the seam is wrong* — and that is a finding, not a chore.
+
+- **L — Liskov substitution.** Any `AnswerSource` must be usable wherever another is, which
+  is precisely why `Polyphony` is **declared on the port** rather than assumed by the
+  caller. A mic that quietly behaved as if it were polyphonic would substitute *badly* in
+  the most damaging way available — it would score Dewi on notes it never heard. The
+  refusal (spec I3) is Liskov enforced at runtime where the type system cannot reach.
+
+- **I — Interface segregation.** `TickTiming` exists as a separate, smaller interface from
+  `Conductor` for one reason: the judge needs the musical↔wall mapping and has no business
+  being able to start, pause or query the transport. Handing it the fat interface is what
+  made the pause bug possible at all. A caller should be given the narrowest thing that does
+  its job.
+
+- **D — Dependency inversion.** Everything depends on ports; `AppContainer` is the **only**
+  place in the app that names a concrete adapter. That is what makes `:core:practice` and
+  `:core:notation` pure JVM, testable in milliseconds and in fake time, and it is why the
+  interesting correctness in this app never needs a device to check.
+
+## Shift left: make the compiler find it, not Dewi
+
+The order of preference for catching a defect, strongest first, and always reach for the
+strongest one available:
+
+1. **It cannot be expressed.** A sealed hierarchy, a value class, an exhaustive `when`. The
+   `-1` sentinel in `NoteJudgement` was removed for exactly this reason: it made
+   `attackedNotes[-1]` one careless call away, and a sealed type made the illegal state
+   unrepresentable instead of merely unlikely.
+2. **It fails to compile.** Warnings are errors — see below. A pure-JVM module cannot see
+   Android because it does not have the dependency, so leakage is a compile error rather
+   than a code-review comment.
+3. **A static analyser rejects it.** detekt (with ktlint formatting) and Android lint, both
+   failing the build, on every module automatically from the root build.
+4. **A test fails.** Cheap, fast, and where the correctness lives — but already a step
+   behind, because a test only catches what someone thought to write.
+5. **It is visible on screen.** The last four real bugs were here, and this is late.
+6. **A diagnostics report from Dewi's phone shows it.** This is the last line, and by the
+   time it fires he has already practised the wrong thing.
+
+Concretely, and non-negotiably:
+
+- **`allWarningsAsErrors` on every module**, configured once in the root build's
+  `kotlinDefaults`. A warning is the compiler saying it found something and decided not to
+  stop you; on a one-person app nobody triages a warning list, so it must stop you.
+- **`explicitApi()` on every pure-JVM module.** Public API is deliberate, and a return type
+  is stated rather than inferred.
+- **Android lint with `warningsAsErrors = true` and `abortOnError = true`**, applied to
+  every Android module from `androidDefaults` — a module cannot opt out by forgetting.
+  Only version-freshness nags are disabled, because those go red on someone else's release
+  rather than on a change here.
+- **detekt with `buildUponDefaultConfig`**, and a rule is loosened in
+  `config/detekt/detekt.yml` **with a written reason** or not at all. Never `@Suppress` at
+  the call site to get a build through.
+- **Kover at 75% on the logic modules**, ratcheting upwards and never down without a
+  recorded reason. Adapter modules are exempt *and covered by instrumented tests instead* —
+  exempt is not the same as untested.
+- When a gate does fire, **fix the code, not the gate.** Every relaxation in this repo's
+  config carries a comment explaining what it was hiding; if you add one without that, you
+  have moved the problem rather than solved it. The `MagicNumber` rule was widened for named
+  arguments and enum entries precisely because it was pushing real indirection into contract
+  files, and that reasoning is written down next to the change.
 
 ## Timing is the whole game
 

@@ -3,6 +3,7 @@ package com.dewijones92.primavista.di
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import com.dewijones92.primavista.audio.AudioRecordPcmCapture
 import com.dewijones92.primavista.audio.AudioTrackTonePlayer
 import com.dewijones92.primavista.audio.ClickMetronome
@@ -29,6 +30,7 @@ import com.dewijones92.primavista.practice.Tolerances
 import com.dewijones92.primavista.practice.WindowedJudge
 import com.dewijones92.primavista.score.DerivedScoreSkills
 import com.dewijones92.primavista.score.DomMusicXmlParser
+import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.Score
 import com.dewijones92.primavista.score.SeededExerciseGenerator
 import com.dewijones92.primavista.score.TimeSignature
@@ -109,19 +111,28 @@ public class AppContainer(private val context: Context) {
      * Built lazily because constructing it touches audio hardware, and a session that only ever taps
      * should not open the microphone — nor prompt for a permission it is not going to use.
      */
-    public val micSource: MicPitchAnswerSource by lazy {
+    private val micSourceDelegate = lazy {
         MicPitchAnswerSource(
-            capture = AudioRecordPcmCapture(microphonePermission, diag),
+            capture = AudioRecordPcmCapture(
+                micPermission = microphonePermission,
+                diag = diag,
+                audioManager = context.getSystemService(AudioManager::class.java),
+            ),
             trackerFor = { sampleRate -> YinNoteTracker(sampleRate, diag = diag) },
             tonePlayer = tonePlayer,
             diag = diag,
         )
     }
 
+    public val micSource: MicPitchAnswerSource by micSourceDelegate
+
     public fun sourceFor(mode: InputMode): AnswerSource = when (mode) {
         InputMode.Tap -> tapSource
         InputMode.Mic -> micSource
     }
+
+    /** Asked before offering PLAY IT, so the app never opens a record that would return silence. */
+    public fun microphoneGranted(): Boolean = microphonePermission.isGranted()
 
     // --- storage --------------------------------------------------------------------------------
 
@@ -143,9 +154,15 @@ public class AppContainer(private val context: Context) {
         database?.let { RoomSessionStore(it, diag) }
     }
 
+    /** One session's worth of the graph, so the view model takes a port rather than fourteen things. */
+    public val practiceWiring: PracticeWiring by lazy { AppPracticeWiring(this) }
+
     public fun release() {
         tonePlayer.release()
         metronome.release()
+        // Asking the delegate rather than the property: touching micSource here would open the
+        // microphone in order to close it.
+        if (micSourceDelegate.isInitialized()) micSource.release()
         diag.event("app", "released audio resources")
     }
 
@@ -154,4 +171,12 @@ public class AppContainer(private val context: Context) {
     }
 }
 
-public enum class InputMode { Tap, Mic }
+/**
+ * [polyphony] is what the adapter behind the mode can actually hear, and it travels with the mode so
+ * the scheduler and the judge are asked the same question about the same thing. Ten fingers on the
+ * on-screen keyboard are genuinely polyphonic; one microphone is not (docs/spec.md I3).
+ */
+public enum class InputMode(public val polyphony: Polyphony) {
+    Tap(Polyphony.Poly),
+    Mic(Polyphony.Mono),
+}

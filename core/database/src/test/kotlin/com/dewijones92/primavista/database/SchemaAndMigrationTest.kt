@@ -32,6 +32,18 @@ class SchemaAndMigrationTest {
         )
     }
 
+    /**
+     * The SM-2 rung cannot be re-derived from attempts and lapses, so a build that stops storing
+     * it silently puts every mature skill back on the bottom rung. See `.claude/CODE-NOTES.md`.
+     */
+    @Test
+    fun theCurrentSchemaStillStoresTheSpacedRepetitionRung() {
+        assertTrue(
+            "skill_states has no repetition column in the exported schema",
+            exportedSchema(DATABASE_VERSION).readText().contains("\"columnName\": \"repetition\""),
+        )
+    }
+
     /** Every version that has ever shipped keeps its schema, or its migration cannot be reviewed. */
     @Test
     fun everyVersionUpToTheCurrentOneHasItsSchemaOnDisk() {

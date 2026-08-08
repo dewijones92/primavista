@@ -87,3 +87,15 @@ public val TabularNumeral: TextStyle = TextStyle(
     fontSize = 14.sp,
     letterSpacing = 0.sp,
 )
+
+/**
+ * The count-in digit. Deliberately larger than `displayLarge` and tabular: the beats replace each
+ * other in place, and a proportional font would shuffle the digit sideways on every beat.
+ */
+public val CountInNumeral: TextStyle = TextStyle(
+    fontFamily = FontFamily.Monospace,
+    fontWeight = FontWeight.Bold,
+    fontSize = 88.sp,
+    lineHeight = 92.sp,
+    letterSpacing = (-4).sp,
+)

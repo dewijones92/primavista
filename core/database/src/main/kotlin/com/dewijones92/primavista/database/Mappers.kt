@@ -53,33 +53,54 @@ internal fun StoredSession.toEntity(): SessionEntity {
     )
 }
 
-internal fun SessionEntity.toStored(): StoredSession = StoredSession(
-    id = SessionId(id),
-    scoreId = ScoreId(scoreId),
-    scoreTitle = scoreTitle,
-    origin = decodeOrigin(),
-    inputLabel = inputLabel,
-    polyphony = polyphony,
-    tempoBpm = tempoBpm,
-    latency = InputLatency(latencyMillis, latencyProvenance),
-    startedAtEpochMillis = startedAtEpochMillis,
-    finishedAtEpochMillis = finishedAtEpochMillis,
-    notesExpected = notesExpected,
-    correct = correct,
-    originDescriptor = describeOrigin(),
-)
-
-private fun SessionEntity.decodeOrigin(): ScoreOrigin? = when (originKind) {
-    OriginKinds.PARSED -> originSourceName?.let { ScoreOrigin.Parsed(it, originLicence.orEmpty()) }
-    OriginKinds.GENERATED -> originSeed?.let { seed ->
-        originSpec?.let { DifficultyCodec.decode(it) }?.let { ScoreOrigin.Generated(seed, it) }
-    }
-    else -> null
+internal fun SessionEntity.toStored(): StoredSession {
+    val reading = readOrigin()
+    return StoredSession(
+        id = SessionId(id),
+        scoreId = ScoreId(scoreId),
+        scoreTitle = scoreTitle,
+        origin = (reading as? OriginReading.Readable)?.origin,
+        inputLabel = inputLabel,
+        polyphony = polyphony,
+        tempoBpm = tempoBpm,
+        latency = InputLatency(latencyMillis, latencyProvenance),
+        startedAtEpochMillis = startedAtEpochMillis,
+        finishedAtEpochMillis = finishedAtEpochMillis,
+        notesExpected = notesExpected,
+        correct = correct,
+        originDescriptor = describeOrigin(reading),
+    )
 }
 
-internal fun SessionEntity.describeOrigin(): String =
+internal sealed interface OriginReading {
+    data class Readable(val origin: ScoreOrigin) : OriginReading
+
+    data class Unreadable(val reason: String) : OriginReading
+}
+
+internal fun SessionEntity.readOrigin(): OriginReading = when (originKind) {
+    OriginKinds.PARSED ->
+        originSourceName
+            ?.let { OriginReading.Readable(ScoreOrigin.Parsed(it, originLicence.orEmpty())) }
+            ?: OriginReading.Unreadable("a parsed origin with no source name")
+    OriginKinds.GENERATED -> readGeneratedOrigin()
+    OriginKinds.UNKNOWN -> OriginReading.Unreadable("the session was stored with no origin")
+    else -> OriginReading.Unreadable("unrecognised origin kind '$originKind'")
+}
+
+private fun SessionEntity.readGeneratedOrigin(): OriginReading {
+    val seed = originSeed ?: return OriginReading.Unreadable("a generated origin with no seed")
+    val encoded = originSpec ?: return OriginReading.Unreadable("a generated origin with no spec")
+    return when (val spec = DifficultyCodec.read(encoded)) {
+        is SpecReading.Readable -> OriginReading.Readable(ScoreOrigin.Generated(seed, spec.spec))
+        is SpecReading.Unreadable -> OriginReading.Unreadable(spec.reason)
+    }
+}
+
+internal fun SessionEntity.describeOrigin(reading: OriginReading = readOrigin()): String =
     "kind=$originKind source=${originSourceName ?: "-"} licence=${originLicence ?: "-"} " +
-        "seed=${originSeed ?: "-"} spec=${originSpec ?: "-"}"
+        "seed=${originSeed ?: "-"} spec=${originSpec ?: "-"}" +
+        ((reading as? OriginReading.Unreadable)?.let { " why=${it.reason}" } ?: "")
 
 internal fun NoteJudgement.toEntity(sessionId: SessionId): NoteVerdictEntity = when (val settled = verdict) {
     is Verdict.Correct -> row(sessionId, VerdictKinds.CORRECT, dtMillis = settled.dtMillis)
@@ -162,6 +183,7 @@ internal fun SkillState.toEntity(): SkillStateEntity = SkillStateEntity(
     dueAtEpochMillis = dueAtEpochMillis,
     attempts = attempts,
     lapses = lapses,
+    repetition = repetition,
 )
 
 internal sealed interface SkillRowReading {
@@ -173,7 +195,9 @@ internal sealed interface SkillRowReading {
 internal fun SkillStateEntity.read(): SkillRowReading = when (val key = SkillTagKeys.read(skillKey)) {
     is SkillKeyReading.Unreadable -> SkillRowReading.Unreadable(skillKey, key.reason)
     is SkillKeyReading.Readable -> runCatching {
-        SkillRowReading.Readable(SkillState(key.tag, strength, dueAtEpochMillis, attempts, lapses))
+        SkillRowReading.Readable(
+            SkillState(key.tag, strength, dueAtEpochMillis, attempts, lapses, repetition),
+        )
     }.getOrElse { SkillRowReading.Unreadable(skillKey, it.message ?: it.toString()) }
 }
 
@@ -204,19 +228,3 @@ internal fun RepertoireEntity.toEntry(): RepertoireEntry = RepertoireEntry(
     source = source,
     addedAtEpochMillis = addedAtEpochMillis,
 )
-
-internal fun PracticeSettings.toEntity(): SettingsEntity = SettingsEntity(
-    tempoBpm = tempoBpm,
-    metronomeOn = metronomeOn,
-    listenFirstOn = listenFirstOn,
-    inputLabel = inputLabel,
-)
-
-internal fun SettingsEntity.toSettings(): PracticeSettings = PracticeSettings(
-    tempoBpm = tempoBpm,
-    metronomeOn = metronomeOn,
-    listenFirstOn = listenFirstOn,
-    inputLabel = inputLabel,
-)
-
-internal fun AudioRouteLatencyEntity.toLatency(): InputLatency = InputLatency(millis, provenance)

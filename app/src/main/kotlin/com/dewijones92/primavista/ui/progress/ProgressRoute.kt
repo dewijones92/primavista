@@ -1,11 +1,7 @@
 package com.dewijones92.primavista.ui.progress
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,53 +9,58 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.dewijones92.primavista.database.DatabaseOpening
+import com.dewijones92.primavista.database.StoredReading
+import com.dewijones92.primavista.database.map
 import com.dewijones92.primavista.di.AppContainer
 import com.dewijones92.primavista.practice.SkillState
 import com.dewijones92.primavista.score.Alter
 import com.dewijones92.primavista.score.Clef
 import com.dewijones92.primavista.score.KeySignature
 import com.dewijones92.primavista.score.SkillTag
+import com.dewijones92.primavista.ui.UnreadablePanel
 
 @Composable
 public fun ProgressRoute(container: AppContainer, modifier: Modifier = Modifier) {
-    // An unreadable database is reported, not silently shown as "no progress yet" — those look
-    // identical on screen and mean opposite things (docs/spec.md I4).
     when (val opening = container.databaseOpening) {
-        is DatabaseOpening.Unreadable -> UnreadableStore(opening.reason, modifier)
+        is DatabaseOpening.Unreadable -> UnreadablePanel(SKILLS, opening.reason, modifier)
         is DatabaseOpening.Opened -> {
-            val states by produceState(initialValue = emptyList<SkillState>(), container) {
-                value = container.skillStore?.states().orEmpty()
+            val states by produceState<StoredReading<List<SkillState>>?>(null, container) {
+                value = container.skillStore?.storedStates() ?: unopened(SKILLS)
             }
-            ProgressScreen(
-                states = states,
-                nowEpochMillis = System.currentTimeMillis(),
-                describe = { describe(it.tag) },
-                modifier = modifier,
-            )
+            val sessions by produceState<StoredReading<List<SessionPoint>>?>(null, container) {
+                value = container.sessionStore?.recent(TREND_SESSIONS)?.map { stored ->
+                    stored.filter { it.isFinished }
+                        .sortedBy { it.startedAtEpochMillis }
+                        .map { SessionPoint(it.startedAtEpochMillis, it.accuracy, it.scoreTitle) }
+                } ?: unopened(SESSIONS)
+            }
+            when (val reading = states) {
+                null -> LoadingProgress(modifier)
+                is StoredReading.Unreadable -> UnreadablePanel(reading.what, reading.reason, modifier)
+                is StoredReading.Readable -> ProgressScreen(
+                    states = reading.value,
+                    sessions = sessions,
+                    nowEpochMillis = System.currentTimeMillis(),
+                    describe = { describe(it.tag) },
+                    modifier = modifier,
+                )
+            }
         }
     }
 }
 
+private fun unopened(what: String): StoredReading.Unreadable =
+    StoredReading.Unreadable(what, "the practice database could not be opened")
+
 @Composable
-private fun UnreadableStore(reason: String, modifier: Modifier) {
-    Box(modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Practice history can't be read", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = reason,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "The file is still on disk and nothing has been deleted.",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+private fun LoadingProgress(modifier: Modifier) {
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            text = "Reading your practice history…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -77,7 +78,12 @@ internal fun describe(tag: SkillTag): String = when (tag) {
         if (tag.dots == 2) append(", double dotted")
         if (tag.tupletNumerator != 1) append(", ${tag.tupletNumerator}-tuplet")
     }
-    is SkillTag.Leap -> "Leaps of ${tag.semitones} semitone${plural(tag.semitones)}"
+    is SkillTag.Leap ->
+        if (tag.semitones == 0) {
+            "Repeated notes"
+        } else {
+            "Leaps of ${tag.semitones} semitone${plural(tag.semitones)}"
+        }
     SkillTag.HandIndependence -> "Both hands at once"
 }
 
@@ -134,3 +140,8 @@ private fun keyName(fifths: Int): String =
     KeyNames.getOrElse(fifths + KeySignature.MAX_FIFTHS) { "$fifths accidentals" }
 
 private fun plural(count: Int): String = if (count == 1) "" else "s"
+
+private const val TREND_SESSIONS = 30
+
+internal const val SKILLS: String = "what you have practised"
+internal const val SESSIONS: String = "your recent sessions"

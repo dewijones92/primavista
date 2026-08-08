@@ -123,11 +123,22 @@ public data class NotationColors(
     val ink: Color,
     val staffLine: Color,
     val playhead: Color,
+    val playheadGlow: Color,
     val correct: Color,
     val wrongPitch: Color,
     val offTime: Color,
     val missed: Color,
+    /** Written but not yet reached. Dimmer than [ink], never a verdict colour — see CODE-NOTES. */
     val upcoming: Color,
+    /** The shadow the pinned clef/key strip casts over the music sliding under it. */
+    val pinnedEdge: Color,
+    /**
+     * The keyboard's own two colours, which do **not** invert with the theme: a piano's naturals
+     * are pale and its sharps are dark in any light, and swapping them reads as a photographic
+     * negative rather than as dark mode.
+     */
+    val keyNatural: Color,
+    val keySharp: Color,
 )
 
 internal val DarkNotationColors = NotationColors(
@@ -135,11 +146,15 @@ internal val DarkNotationColors = NotationColors(
     ink = Color(0xFFF4F1FA),
     staffLine = Color(0xFF8A82A0),
     playhead = Brass,
+    playheadGlow = BrassBright,
     correct = Mint,
     wrongPitch = Coral,
     offTime = BrassBright,
     missed = Color(0xFF6E6780),
-    upcoming = Color(0xFFF4F1FA),
+    upcoming = Color(0xFF8B84A3),
+    pinnedEdge = Color(0xA6000000),
+    keyNatural = Color(0xFFD5D0DE),
+    keySharp = Color(0xFF0B0910),
 )
 
 internal val LightNotationColors = NotationColors(
@@ -147,11 +162,15 @@ internal val LightNotationColors = NotationColors(
     ink = Color(0xFF14121A),
     staffLine = Color(0xFF5A5648),
     playhead = BrassDeep,
+    playheadGlow = Brass,
     correct = MintDeep,
     wrongPitch = CoralDeep,
     offTime = Color(0xFF9A6200),
     missed = Color(0xFF9A9484),
-    upcoming = Color(0xFF14121A),
+    upcoming = Color(0xFF7C776A),
+    pinnedEdge = Color(0x55372A12),
+    keyNatural = Color(0xFFFFFDF8),
+    keySharp = Color(0xFF17141F),
 )
 
 public val LocalNotationColors: androidx.compose.runtime.ProvidableCompositionLocal<NotationColors> =

@@ -9,6 +9,7 @@ import com.dewijones92.primavista.score.Staff
 import com.dewijones92.primavista.score.TimeSignature
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DifficultyCodecTest {
@@ -90,6 +91,35 @@ class DifficultyCodecTest {
         )
         assertNull(DifficultyCodec.decode(encoded.replace("range=Upper>60-84,Lower>36-60", "range=Lower>36-60")))
         assertNull(DifficultyCodec.decode(encoded.replace("staves=Upper,Lower", "staves=Upper,Upper")))
+    }
+
+    /**
+     * A corrupt field is not a field from a later build. Ignoring it would replay a *different*
+     * exercise than the report names, which is the one thing the codec exists to prevent.
+     */
+    @Test
+    fun aFieldThatIsNotNameEqualsValueIsRefusedRatherThanSkipped() {
+        val encoded = DifficultyCodec.encode(sampleSpec())
+
+        assertNull(DifficultyCodec.decode("$encoded;bars"))
+        assertNull(DifficultyCodec.decode("$encoded;"))
+    }
+
+    @Test
+    fun aFieldGivenTwoValuesIsRefusedRatherThanOneOfThemWinning() {
+        val encoded = DifficultyCodec.encode(sampleSpec())
+
+        assertNull(DifficultyCodec.decode("$encoded;bars=4"))
+        assertNull(DifficultyCodec.decode(encoded.replace("clefs=", "clefs=Upper>Bass;clefs=")))
+    }
+
+    /** A dropped origin has to say why, or a report shows a blank where the exercise was. */
+    @Test
+    fun anUnreadableStoredFormNamesWhatWasWrongWithIt() {
+        val reading = DifficultyCodec.read(DifficultyCodec.encode(sampleSpec()).replace("bars=8", "bars=nope"))
+
+        assertTrue("$reading", reading is SpecReading.Unreadable)
+        assertTrue((reading as SpecReading.Unreadable).reason.contains("nope"))
     }
 
     @Test

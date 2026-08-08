@@ -129,7 +129,15 @@ evidence of what is weak, which silently degrades every future session choice.
 from stored verdicts rather than held only in memory.
 
 **Proven by:** instrumented tests round-tripping a session and re-deriving skill state.
-*Status: to be written with `:core:database`.*
+*Status: held, on a device, by 39 instrumented tests in `:core:database`. `SessionStoreTest` covers
+the round trip — "every verdict kind survives the round trip through SQLite", "several extras in one
+session are all kept", "a generated session keeps its seed and spec so it can be replayed" (which is
+what makes a stored session reproducible at all), and "saving twice replaces the session rather than
+duplicating it", since a session is written at pause as well as at finish. `SkillStoreTest` holds the
+derivation — "the rung climbs across sessions because it is stored rather than rederived" and "a
+lapse takes the stored rung back down rather than leaving it stale". `SkillRepetitionMigrationTest`
+covers "the app being updated" specifically: "a version one skill row keeps its strength and starts
+on the bottom rung" runs the real migration against the exported v1 schema.*
 
 ### I5 — What you get next reflects how you actually did
 
@@ -164,9 +172,13 @@ goes where Dewi sends it.
 **How it is held:** the app has **no `INTERNET` permission**. Not a policy — an absence.
 Reports leave only through a share sheet.
 
-**Proven by:** the manifest, and a test asserting `INTERNET` is absent from the merged
+**Proven by:** the manifest, and a check asserting `INTERNET` is absent from the merged
 manifest, so adding it later is a deliberate, visible act rather than a transitive
-dependency's side effect. *Status: to be written with `:app`.*
+dependency's side effect. *Status: held by a CI step ("Assert no INTERNET permission") rather than
+by a test, and the distinction is worth stating: it runs on every push but not on a local
+`./gradlew` run, so a locally-introduced dependency that pulls the permission in is caught at push
+time, not at build time. The step counts the merged manifests it found and fails when that count is
+zero, because a check that finds nothing to check and reports success is the failure mode here.*
 
 ### I7 — A report from his phone can settle whether I1–I6 held
 
@@ -180,16 +192,31 @@ over. A feature that works but cannot be shown to have worked is not finished.
 `CLAUDE.md`), high-frequency events are counted rather than logged per-event, and every
 report carries the build's git SHA so a finding can be dated against the code.
 
-**Proven by:** nothing yet, and that is the honest state. *Status: the report format and a
-test that a session produces enough to reconstruct its verdicts are on the backlog.*
+**Proven by:** nothing yet, and that is still the honest state. *Status: the buffer's own mechanics
+are held by `RingBufferDiagTest` — that a hot counted event costs few entries and loses no count,
+that overflow says how many it dropped, that a throwing state block degrades to a note rather than
+losing the report, and that concurrent writers lose nothing. But the invariant is not about the
+buffer, it is about whether a report can settle the other six, and **nothing asserts that**. The
+test that would — take a finished session's report, feed its recorded notes and its seed back
+through `PerformanceJudge`, and assert it reproduces the verdicts the report claims — is on the
+backlog (`docs/todos/diagnostics-report.md`). Until it exists, I7 is a design intention with good
+foundations, not a proven property.*
+
+That said, the report has already twice done in practice what this invariant asks of it: it found
+the origin-zero timing bug on 2026-08-07 (a tap at uptime 29,542s landing at tick 555,868,801 in a
+120,960-tick score, from one line that logged the tap's timestamp beside the clock's), and before
+that it distinguished "the touch never arrived" from "the flow never delivered it". Neither was
+visible to any test. That is evidence the design works; it is not a substitute for the guard.
 
 ## The weakness
 
 Stated plainly so nobody mistakes the above for a description of working software:
 
-- **Only the pure-JVM half is proven.** I1, I2, I3 and I5 now name the tests that hold them;
-  I4, I6 and I7 are still "to be written", and until they land this document remains partly a
-  plan rather than a report. When each lands, update its status here in the same pass.
+- **I7 is the one still proven by nothing.** I1, I2, I3 and I5 name the JVM tests that hold them,
+  I4 is held by 39 instrumented tests on a device, and I6 by a CI step. I7 — that a report can
+  settle the other six — has good foundations and no guard, which matters more than the count
+  suggests: it is the invariant the other six are *checked through* once the app is on a phone and
+  nobody is watching.
 - **Latency is unmeasured.** I2's promise is about numbers, and the audio path's real
   round-trip latency on Dewi's phone is currently unknown. Until it is measured and
   compensated, mic verdicts carry a systematic timing bias of unknown size. This is the

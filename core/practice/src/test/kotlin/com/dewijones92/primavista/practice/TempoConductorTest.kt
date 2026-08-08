@@ -254,6 +254,112 @@ class TempoConductorTest {
     }
 
     @Test
+    fun `a perfect performance played live across two pauses is all correct`() {
+        val clock = FakeClock()
+        val conductor = TempoConductor(clock, tempoBpm = TEST_TEMPO_BPM)
+        val letters = listOf(Letter.C, Letter.D, Letter.E, Letter.F)
+        val score = scoreOf(letters.mapIndexed { index, letter -> tone(beat(index), letter, 4) })
+        conductor.start()
+        val session = LiveSession(WindowedJudge(), clock, conductor, score)
+        fun play(index: Int) =
+            session.play(PlayedNote(midiOf(letters[index], 4), conductor.nanosFor(beat(index))))
+        fun phoneCall(nanos: Long) {
+            conductor.pause()
+            clock.advance(nanos)
+            conductor.resume()
+            session.retime()
+        }
+
+        play(0)
+        play(1)
+        session.runTo(clock.nowNanos() + ms(120.0))
+        phoneCall(ONE_SECOND_NANOS * 17)
+        play(2)
+        phoneCall(ONE_SECOND_NANOS * 3)
+        play(3)
+        session.runTo(conductor.nanosFor(score.endsAt) + ms(600.0))
+
+        val result = session.finish()
+
+        assertEquals("judgements were ${result.judgements}", letters.size, result.correct)
+        assertEquals("a note after a resume is not late by the length of the pause", 0, result.extras)
+        assertTrue("judgements were ${result.judgements}", result.judgements.all { it.verdict == Verdict.Correct(0.0) })
+    }
+
+    @Test
+    fun `a note overdue but still inside its window when the phone rings is not missed`() {
+        val clock = FakeClock()
+        val conductor = TempoConductor(clock, tempoBpm = TEST_TEMPO_BPM)
+        val letters = listOf(Letter.C, Letter.D, Letter.E, Letter.F)
+        val score = scoreOf(letters.mapIndexed { index, letter -> tone(beat(index), letter, 4) })
+        conductor.start()
+        val session = LiveSession(WindowedJudge(), clock, conductor, score)
+        letters.dropLast(1).forEachIndexed { index, letter ->
+            session.play(PlayedNote(midiOf(letter, 4), conductor.nanosFor(beat(index))))
+        }
+
+        session.runTo(conductor.nanosFor(beat(3)) + ms(50.0))
+        conductor.pause()
+        clock.advance(ONE_SECOND_NANOS * 17)
+        conductor.resume()
+        session.retime()
+        session.play(PlayedNote(midiOf(Letter.F, 4), clock.nowNanos() + ms(25.0)))
+        session.runTo(conductor.nanosFor(score.endsAt) + ms(600.0))
+
+        val result = session.finish()
+
+        assertEquals("judgements were ${result.judgements}", letters.size, result.correct)
+        assertEquals("a note he had not yet missed was not missed", 0, result.extras)
+        assertEquals(ofNote(3, Verdict.Correct(75.0)), result.judgements.last())
+    }
+
+    @Test
+    fun `an imperfect performance across a pause is judged the same live and from its snapshot`() {
+        val clock = FakeClock()
+        val conductor = TempoConductor(clock, tempoBpm = TEST_TEMPO_BPM)
+        val score = scoreOf(
+            listOf(Letter.C, Letter.D, Letter.E, Letter.F, Letter.G, Letter.A)
+                .mapIndexed { index, letter -> tone(beat(index), letter, 4) },
+            bars = 2,
+        )
+        conductor.start()
+        val session = LiveSession(WindowedJudge(), clock, conductor, score)
+        val played = mutableListOf<PlayedNote>()
+        fun play(letter: Letter, atNanos: Long) {
+            played += PlayedNote(midiOf(letter, 4), atNanos)
+            session.play(played.last())
+        }
+
+        play(Letter.C, conductor.nanosFor(beat(0)))
+        play(Letter.E, conductor.nanosFor(beat(1)))
+        session.runTo(conductor.nanosFor(beat(3)) + ms(200.0))
+        conductor.pause()
+        clock.advance(ONE_SECOND_NANOS * 9)
+        conductor.resume()
+        session.retime()
+        play(Letter.F, clock.nowNanos() + ms(50.0))
+        play(Letter.A, conductor.nanosFor(beat(5)) + ms(50.0))
+        session.runTo(conductor.nanosFor(score.endsAt) + ms(600.0))
+
+        val live = session.finish()
+        val batch = judged(WindowedJudge().judgeAll(score, polySource, conductor.timingSnapshot(), played))
+
+        assertEquals(
+            listOf(
+                ofNote(0, Verdict.Correct(0.0)),
+                ofNote(1, Verdict.WrongPitch(midiOf(Letter.D, 4), midiOf(Letter.E, 4), 0.0)),
+                ofNote(2, Verdict.Missed),
+                ofNote(3, Verdict.Late(250.0)),
+                ofNote(4, Verdict.Missed),
+                ofNote(5, Verdict.Correct(50.0)),
+            ),
+            live.judgements,
+        )
+        assertEquals("the live fold and a re-judge must tell the same story", live.judgements, batch.judgements)
+        assertEquals(live.skillOutcomes, batch.skillOutcomes)
+    }
+
+    @Test
     fun `a perfect performance across a pause re-judges identically from its own snapshot`() {
         val clock = FakeClock()
         val conductor = TempoConductor(clock, tempoBpm = TEST_TEMPO_BPM)

@@ -183,9 +183,13 @@ public interface PerformanceJudge {
      * Handing the judge a running `Conductor` makes it un-pure by the back door: a session
      * containing a pause then re-judges differently from a report of itself, because the mapping it
      * consulted has moved on. That breaks docs/spec.md I2's whole basis, so take
-     * [Conductor.timingSnapshot] here rather than the Conductor.
+     * [Conductor.timingSnapshot] here rather than the Conductor. A later snapshot reaches an
+     * in-flight fold through [retime], never by the fold reading a live transport.
      */
     public fun begin(score: Score, timing: TickTiming): JudgeState
+
+    /** Swaps in a newer [timing] map on resume. See .claude/CODE-NOTES.md. */
+    public fun retime(state: JudgeState, timing: TickTiming): JudgeState
 
     /** Folds in one played note, returning any verdicts it settled. */
     public fun advance(state: JudgeState, note: PlayedNote): Pair<JudgeState, List<NoteJudgement>>

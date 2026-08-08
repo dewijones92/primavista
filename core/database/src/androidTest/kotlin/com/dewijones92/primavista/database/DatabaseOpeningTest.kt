@@ -45,7 +45,8 @@ class DatabaseOpeningTest {
 
         val second = (PrimaVistaDatabase.open(context) as DatabaseOpening.Opened).database
         try {
-            assertEquals(listOf(SessionId("session-1")), RoomSessionStore(second).recent().map { it.id })
+            val stored = RoomSessionStore(second).recent().readOrFail()
+            assertEquals(listOf(SessionId("session-1")), stored.map { it.id })
         } finally {
             second.close()
         }

@@ -11,6 +11,7 @@ public class RoomRepertoireStore(
     private val diag: Diag = NoOpDiag,
 ) : RepertoireStore {
     private val repertoire: RepertoireDao = database.repertoire()
+    private val unreadable = UnreadableRowLog(diag, TAG, "skillKeysDropped")
 
     override suspend fun upsert(entry: RepertoireEntry) {
         repertoire.upsert(entry.toEntity())
@@ -22,11 +23,12 @@ public class RoomRepertoireStore(
         )
     }
 
-    override suspend fun all(): List<RepertoireEntry> = repertoire.all().map { row ->
-        row.toEntry().also { warnIfSkillsLost(row) }
+    override suspend fun all(): StoredReading<List<RepertoireEntry>> = diag.readOrRefuse(TAG, "the repertoire") {
+        repertoire.all().map { row -> row.toEntry().also { warnIfSkillsLost(row) } }
     }
 
-    override suspend fun summaries(): List<ScoreSummary> = all().map { it.summary }
+    override suspend fun summaries(): StoredReading<List<ScoreSummary>> =
+        all().map { entries -> entries.map { it.summary } }
 
     override suspend fun forget(id: ScoreId) {
         repertoire.delete(id.value)
@@ -35,7 +37,10 @@ public class RoomRepertoireStore(
 
     private fun warnIfSkillsLost(row: RepertoireEntity) {
         SkillTagKeys.readSet(row.skillKeys).filterIsInstance<SkillKeyReading.Unreadable>().forEach {
-            diag.event(TAG, "score=${row.scoreId} dropped skill key '${it.key}': ${it.reason}")
+            unreadable.report(
+                "${row.scoreId}/${it.key}",
+                "score=${row.scoreId} dropped skill key '${it.key}': ${it.reason}",
+            )
         }
     }
 

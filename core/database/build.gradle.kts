@@ -3,7 +3,8 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-val schemaDirectory = layout.projectDirectory.dir("schemas").asFile.path
+val schemaFolder = "schemas"
+val schemaDirectory = layout.projectDirectory.dir(schemaFolder).asFile.path
 
 android {
     namespace = "com.dewijones92.primavista.database"
@@ -17,6 +18,19 @@ android {
 // against it (docs/spec.md I4).
 ksp {
     arg("room.schemaLocation", schemaDirectory)
+}
+
+// The instrumented migration test builds the OLD database from its exported schema, so the
+// schema folder has to be readable on-device. `android.sourceSets["androidTest"].assets` is the
+// AGP 8 spelling and throws a ClassCastException on the AGP 9 decorated source set; the variant
+// API below is the supported route, and it also survives androidTest being renamed to a device
+// test. See .claude/CODE-NOTES.md.
+androidComponents {
+    onVariants { variant ->
+        variant.deviceTests.values.forEach { deviceTest ->
+            deviceTest.sources.assets?.addStaticSourceDirectory(schemaFolder)
+        }
+    }
 }
 
 kotlin {
