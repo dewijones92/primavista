@@ -9,6 +9,7 @@ import com.dewijones92.primavista.score.Ticks
 import com.dewijones92.primavista.score.TimeSignature
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Audible beat, driven by the Conductor through [onPosition] and by nothing else.
@@ -38,6 +39,11 @@ public class ClickMetronome(
 
     @Volatile
     private var released = false
+
+    private val framesRendered = AtomicLong()
+
+    /** Frames of click the audio device has actually played. See .claude/CODE-NOTES.md. */
+    public val framesHeard: Long get() = framesRendered.get()
 
     private var tempoBpm: Int = DEFAULT_TEMPO_BPM
     private var time: TimeSignature = TimeSignature.FourFour
@@ -96,7 +102,7 @@ public class ClickMetronome(
         diag.state(TAG) {
             "beat=${beat.indexInBar + 1}/${time.beats} sinceBarStart=${beat.indexFromBarStart} " +
                 "barStart=${crossing?.barStartTicks}ticks position=${position.value}ticks " +
-                "tempo=${tempoBpm}bpm"
+                "tempo=${tempoBpm}bpm heard=${framesRendered.get()}frames"
         }
         clicker.execute { retrigger(track) }
     }
@@ -109,22 +115,32 @@ public class ClickMetronome(
         runCatching { clicker.awaitTermination(SHUTDOWN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS) }
             .onFailure { diag.event(TAG, "click thread shutdown interrupted: ${it.message}") }
         listOfNotNull(beatTrack, accentTrack).forEach { track ->
+            framesRendered.addAndGet(track.playbackHeadPosition.toLong())
             runCatching { track.stop() }.onFailure { diag.event(TAG, "track stop failed: ${it.message}") }
             track.release()
         }
         beatTrack = null
         accentTrack = null
-        diag.event(TAG, "released")
+        diag.event(TAG, "released heard=${framesRendered.get()}frames")
     }
 
     private fun retrigger(track: AudioTrack) {
         try {
+            framesRendered.addAndGet(track.playbackHeadPosition.toLong())
             track.stop()
-            track.reloadStaticData()
+            val reloaded = track.reloadStaticData()
+            if (reloaded != AudioTrack.SUCCESS) {
+                diag.counted(TAG, "reloadFailures")
+                diag.event(TAG, "click rewind failed rc=$reloaded state=${stateName(track.state)}")
+            }
             track.play()
+            diag.counted(TAG, "beatsPlayed")
         } catch (failure: IllegalStateException) {
             diag.counted(TAG, "clickFailures")
-            diag.event(TAG, "click failed: ${failure.message}")
+            diag.event(
+                TAG,
+                "click failed: ${failure.message} state=${stateName(track.state)} play=${track.playState}",
+            )
         }
     }
 
@@ -139,41 +155,59 @@ public class ClickMetronome(
     }
 
     private fun staticTrack(samples: FloatArray, name: String): AudioTrack? {
-        val built = try {
-            AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build(),
-                )
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .build(),
-                )
-                .setBufferSizeInBytes(samples.size * BYTES_PER_FLOAT)
-                .setTransferMode(AudioTrack.MODE_STATIC)
-                .build()
-        } catch (failure: UnsupportedOperationException) {
-            diag.event(TAG, "no $name click track at ${sampleRate}Hz: ${failure.message}")
-            return null
-        } catch (failure: IllegalArgumentException) {
-            diag.event(TAG, "no $name click track at ${sampleRate}Hz: ${failure.message}")
-            return null
-        }
-        if (built.state != AudioTrack.STATE_INITIALIZED) {
-            diag.event(TAG, "$name click track uninitialised state=${built.state}")
+        val bytes = samples.size * BYTES_PER_FLOAT
+        val built = openTrack(bytes, name) ?: return null
+        val refusal = loadStaticData(built, samples)
+        if (refusal != null) {
+            diag.event(TAG, "no $name click track: $refusal")
             built.release()
             return null
         }
-        val written = built.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-        if (written != samples.size) {
-            diag.event(TAG, "$name click track short write $written of ${samples.size} frames")
-        }
+        diag.event(
+            TAG,
+            "$name click track ready state=${stateName(built.state)} frames=${samples.size} " +
+                "bytes=$bytes rate=${sampleRate}Hz",
+        )
         return built
+    }
+
+    private fun openTrack(bufferBytes: Int, name: String): AudioTrack? = try {
+        AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build(),
+            )
+            .setBufferSizeInBytes(bufferBytes)
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .build()
+    } catch (failure: UnsupportedOperationException) {
+        diag.event(TAG, "no $name click track at ${sampleRate}Hz: ${failure.message}")
+        null
+    } catch (failure: IllegalArgumentException) {
+        diag.event(TAG, "no $name click track at ${sampleRate}Hz: ${failure.message}")
+        null
+    }
+
+    /** Null when the track is ready to play; otherwise why it is not. See .claude/CODE-NOTES.md. */
+    private fun loadStaticData(track: AudioTrack, samples: FloatArray): String? {
+        if (track.state == AudioTrack.STATE_UNINITIALIZED) {
+            return "state=${stateName(track.state)} at ${sampleRate}Hz"
+        }
+        val written = track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+        if (written != samples.size) return "wrote $written of ${samples.size} frames"
+        if (track.state != AudioTrack.STATE_INITIALIZED) {
+            return "state=${stateName(track.state)} after ${samples.size} frames"
+        }
+        return null
     }
 
     public companion object {
@@ -185,4 +219,12 @@ public class ClickMetronome(
         private const val CLICK_THREAD_NAME = "primavista-click"
         private const val SHUTDOWN_TIMEOUT_MILLIS = 200L
     }
+}
+
+/** See .claude/CODE-NOTES.md: `state=2` cost a session. */
+private fun stateName(state: Int): String = when (state) {
+    AudioTrack.STATE_INITIALIZED -> "INITIALIZED"
+    AudioTrack.STATE_NO_STATIC_DATA -> "NO_STATIC_DATA"
+    AudioTrack.STATE_UNINITIALIZED -> "UNINITIALIZED"
+    else -> "UNKNOWN($state)"
 }

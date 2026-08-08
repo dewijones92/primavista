@@ -12,9 +12,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-/**
- * NOT YET EXECUTED — written without a device. Needs RECORD_AUDIO granted to the test package.
- */
+/** Opens the real microphone; [grantRecordAudio] is what makes that possible unattended. */
 class AudioRecordPcmCaptureInstrumentedTest {
 
     private lateinit var diag: RecordingDiag
@@ -22,6 +20,7 @@ class AudioRecordPcmCaptureInstrumentedTest {
 
     @Before
     fun setUp() {
+        grantRecordAudio()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         diag = RecordingDiag()

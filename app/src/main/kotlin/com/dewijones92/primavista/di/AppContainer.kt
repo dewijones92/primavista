@@ -16,6 +16,7 @@ import com.dewijones92.primavista.data.AssetGlyphMetricsSource
 import com.dewijones92.primavista.database.DatabaseOpening
 import com.dewijones92.primavista.database.PrimaVistaDatabase
 import com.dewijones92.primavista.database.RoomSessionStore
+import com.dewijones92.primavista.database.RoomSettingsStore
 import com.dewijones92.primavista.database.RoomSkillStore
 import com.dewijones92.primavista.notation.BravuraGlyphMetrics
 import com.dewijones92.primavista.notation.ClassicalStaffLayout
@@ -83,10 +84,15 @@ public class AppContainer(private val context: Context) {
         return WindowedJudge(tolerances) { note -> skillsByNote[note].orEmpty() }
     }
 
-    public fun conductorFor(score: Score, countInBeats: Int = DEFAULT_COUNT_IN_BEATS): Conductor =
+    /** [tempoCeilingBpm] is Dewi's stored top tempo; a piece written slower keeps its own. */
+    public fun conductorFor(
+        score: Score,
+        tempoCeilingBpm: Int,
+        countInBeats: Int = DEFAULT_COUNT_IN_BEATS,
+    ): Conductor =
         TempoConductor(
             clock = SystemMonotonicClock,
-            tempoBpm = score.defaultTempoBpm,
+            tempoBpm = sessionTempoBpm(score.defaultTempoBpm, tempoCeilingBpm),
             countInBeats = countInBeats,
             time = score.measures.firstOrNull()?.time ?: TimeSignature.FourFour,
         )
@@ -154,6 +160,11 @@ public class AppContainer(private val context: Context) {
         database?.let { RoomSessionStore(it, diag) }
     }
 
+    /** Constructed here and nowhere else: two settings stores would be two answers. */
+    public val settingsStore: RoomSettingsStore? by lazy {
+        database?.let { RoomSettingsStore(it, diag) }
+    }
+
     /** One session's worth of the graph, so the view model takes a port rather than fourteen things. */
     public val practiceWiring: PracticeWiring by lazy { AppPracticeWiring(this) }
 
@@ -175,8 +186,15 @@ public class AppContainer(private val context: Context) {
  * [polyphony] is what the adapter behind the mode can actually hear, and it travels with the mode so
  * the scheduler and the judge are asked the same question about the same thing. Ten fingers on the
  * on-screen keyboard are genuinely polyphonic; one microphone is not (docs/spec.md I3).
+ *
+ * [label] must equal the adapter's own `AnswerSource.label` — see `.claude/CODE-NOTES.md`.
  */
-public enum class InputMode(public val polyphony: Polyphony) {
-    Tap(Polyphony.Poly),
-    Mic(Polyphony.Mono),
+public enum class InputMode(public val polyphony: Polyphony, public val label: String) {
+    Tap(Polyphony.Poly, "tap"),
+    Mic(Polyphony.Mono, "mic");
+
+    public companion object {
+        /** The stored [com.dewijones92.primavista.database.PracticeSettings.inputLabel], read back. */
+        public fun of(label: String?): InputMode? = entries.firstOrNull { it.label == label }
+    }
 }

@@ -5,12 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import com.dewijones92.primavista.di.AppContainer
-import com.dewijones92.primavista.score.Corpus
-import com.dewijones92.primavista.score.CorpusPiece
-import com.dewijones92.primavista.score.MusicXmlResult
 import com.dewijones92.primavista.score.Polyphony
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * What there is to read, with the facts that decide whether you can read it here: how polyphonic
@@ -21,7 +16,7 @@ import kotlinx.coroutines.withContext
 @Composable
 public fun RepertoireRoute(container: AppContainer, modifier: Modifier = Modifier) {
     val rows by produceState<List<RepertoireRow>?>(null, container) {
-        value = withContext(Dispatchers.Default) { Corpus.pieces.map { rowFor(container, it) } }
+        value = ParsedCorpus.of(container.musicXmlParser, container.diag).map { rowFor(container, it) }
     }
     RepertoireScreen(
         rows = rows,
@@ -36,21 +31,10 @@ public fun RepertoireRoute(container: AppContainer, modifier: Modifier = Modifie
     )
 }
 
-private fun rowFor(container: AppContainer, piece: CorpusPiece): RepertoireRow =
-    when (val parsed = Corpus.parse(piece, container.musicXmlParser)) {
-        is MusicXmlResult.Parsed -> RepertoireRow(
-            piece = piece,
-            bars = parsed.score.measures.size,
-            notes = parsed.score.attackedNotes.size,
-            tempoBpm = parsed.score.defaultTempoBpm,
-            polyphony = parsed.score.polyphony,
-            firstPolyphonicBar = parsed.score.firstPolyphonicMeasure(),
-            skills = container.scoreSkills.skillsOf(parsed.score).toList(),
-            dropped = parsed.dropped,
-            failure = null,
-        )
-        is MusicXmlResult.Failed -> RepertoireRow(
-            piece = piece,
+private fun rowFor(container: AppContainer, parse: PieceParse): RepertoireRow {
+    val score = parse.score
+        ?: return RepertoireRow(
+            piece = parse.piece,
             bars = 0,
             notes = 0,
             tempoBpm = 0,
@@ -58,6 +42,17 @@ private fun rowFor(container: AppContainer, piece: CorpusPiece): RepertoireRow =
             firstPolyphonicBar = null,
             skills = emptyList(),
             dropped = emptyList(),
-            failure = parsed.reason,
+            failure = parse.failure ?: "the piece could not be read",
         )
-    }
+    return RepertoireRow(
+        piece = parse.piece,
+        bars = score.measures.size,
+        notes = score.attackedNotes.size,
+        tempoBpm = score.defaultTempoBpm,
+        polyphony = score.polyphony,
+        firstPolyphonicBar = score.firstPolyphonicMeasure(),
+        skills = container.scoreSkills.skillsOf(score).toList(),
+        dropped = parse.dropped,
+        failure = null,
+    )
+}

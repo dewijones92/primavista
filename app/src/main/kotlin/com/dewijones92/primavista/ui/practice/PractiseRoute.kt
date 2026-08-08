@@ -53,6 +53,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dewijones92.primavista.di.AppContainer
 import com.dewijones92.primavista.di.InputMode
 import com.dewijones92.primavista.practice.SessionResult
+import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.ui.repertoire.PracticeRequest
 import com.dewijones92.primavista.ui.results.ResultsSheet
 
@@ -62,6 +63,9 @@ import com.dewijones92.primavista.ui.results.ResultsSheet
  * What to read comes from the scheduler on every entry rather than from a hardcoded corpus piece —
  * that is the ladder (CLAUDE.md, *The ladder problem*), and it is why a fresh install opens on a
  * four-bar generated exercise rather than on Bach.
+ *
+ * What is listening comes from the Settings screen: the first `choose` reads the stored preference
+ * before it asks for anything to read.
  */
 @Composable
 public fun PractiseRoute(container: AppContainer, modifier: Modifier = Modifier) {
@@ -137,6 +141,7 @@ public fun PractiseRoute(container: AppContainer, modifier: Modifier = Modifier)
         state.result?.let { result ->
             ResultsDialog(
                 result = result,
+                input = state.input.polyphony,
                 onDrill = { viewModel.choose(PracticeIntent.DrillWeakest) },
                 onAgain = { viewModel.choose(PracticeIntent.Again) },
                 onDone = viewModel::dismiss,
@@ -145,9 +150,11 @@ public fun PractiseRoute(container: AppContainer, modifier: Modifier = Modifier)
     }
 }
 
+/** [input] is what was listening, so the sheet cannot offer a drill this session would refuse. */
 @Composable
 private fun ResultsDialog(
     result: SessionResult,
+    input: Polyphony,
     onDrill: () -> Unit,
     onAgain: () -> Unit,
     onDone: () -> Unit,
@@ -162,6 +169,7 @@ private fun ResultsDialog(
         ) {
             ResultsSheet(
                 result = result,
+                input = input,
                 onPractiseWeakest = onDrill,
                 onAgain = onAgain,
                 onDone = onDone,

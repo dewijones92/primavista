@@ -36,8 +36,14 @@ import com.dewijones92.primavista.theme.TabularNumeral
 import com.dewijones92.primavista.ui.UnreadableNote
 import kotlin.math.roundToInt
 
+/** The figure is a ceiling, so the wording is "at most" everywhere — see `.claude/CODE-NOTES.md`. */
 @Composable
 internal fun TempoDial(tempoBpm: Int, onTempo: (Int) -> Unit) {
+    Text(
+        text = "Top tempo",
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
     Row(verticalAlignment = Alignment.Bottom) {
         Text(
             text = tempoBpm.toString(),
@@ -46,7 +52,7 @@ internal fun TempoDial(tempoBpm: Int, onTempo: (Int) -> Unit) {
         )
         Spacer(Modifier.width(BADGE_GAP))
         Text(
-            text = "bpm",
+            text = "bpm at most",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = LABEL_LIFT),
@@ -66,6 +72,13 @@ internal fun TempoDial(tempoBpm: Int, onTempo: (Int) -> Unit) {
         Scale("${MIN_TEMPO.toInt()} — slow enough to read every note")
         Scale(MAX_TEMPO.toInt().toString())
     }
+    Spacer(Modifier.height(ROW_GAP))
+    Text(
+        text = "Nothing is played faster than this. A piece written slower keeps its own tempo, so " +
+            "this only ever slows the reading down.",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

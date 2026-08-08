@@ -47,9 +47,18 @@ public interface PracticeWiring {
 
     public val tonePlayer: TonePlayer
 
+    /**
+     * What Dewi asked for, from the one store that holds it. A session applies these when it loads
+     * rather than observing them, because they decide how a run *starts*.
+     */
+    public val preferences: SessionPreferences
+
     public fun nowEpochMillis(): Long
 
-    public fun conductorFor(score: Score): Conductor
+    /** Asked before opening on the stored PLAY IT: a permission granted once can be taken back. */
+    public fun microphoneGranted(): Boolean
+
+    public fun conductorFor(score: Score, tempoCeilingBpm: Int): Conductor
 
     public fun judgeFor(score: Score): PerformanceJudge
 

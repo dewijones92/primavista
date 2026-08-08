@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-/** NOT YET EXECUTED — written without a device. Audible: it plays notes and clicks. */
+/** Audible: it plays notes. Executed on an emulator, API 35, 2026-08-08. */
 class AudioTrackTonePlayerInstrumentedTest {
 
     private lateinit var diag: RecordingDiag

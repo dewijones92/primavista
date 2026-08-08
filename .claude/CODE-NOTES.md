@@ -292,12 +292,74 @@ Agents implementing a module append their own `##` section and never rewrite ano
   pitch mapping, the correction boundary, the envelope, the mixer and its anchor, the click, the
   click detector's noise floor, the beat crossing, `LoopbackCalibrator` and
   `MicPitchAnswerSource` itself, none of which import anything from `android.*`. The
-  `AudioTrack` and `AudioRecord` bridges are androidTest-only and have **still not been
-  executed** — no device has been available in any session that has touched this module. The
-  instrumented assertions that matter are named in the tests themselves: a capture whose
-  timebase never becomes `DeviceReported`, and a player that cannot report a playback anchor,
-  are both real findings about the device rather than broken tests, and both mean every mic
-  verdict on that device carries unmeasured timing bias.
+  `AudioTrack` and `AudioRecord` bridges are androidTest-only, and as of 2026-08-08 they have
+  finally **been executed**: 22 instrumented tests green on an API 35 emulator. The assertions
+  that matter came back the right way — the capture's timebase does reach `DeviceReported` and
+  the player can report a playback anchor, so neither of the two named findings is live on that
+  device. Both remain worth re-reading on Dewi's phone, because they are device facts rather
+  than code facts.
+
+- **A MODE_STATIC `AudioTrack` reports `STATE_NO_STATIC_DATA` until its buffer is written, and
+  that one line made the metronome silent.** `ClickMetronome.staticTrack` checked
+  `state != STATE_INITIALIZED` *before* the `write`, so every click track was released at
+  construction, both tracks were null, and every beat was counted as `beatsWithNoTrack` — on
+  every device, not just this one (`beat click track uninitialised state=2`, emulator API 35,
+  2026-08-08). The order is now build → write the whole buffer → require `STATE_INITIALIZED`,
+  which is the order MODE_STATIC actually documents, and each of the three failures returns its
+  own reason so a report says which one fired.
+
+- **The click stays MODE_STATIC rather than moving to the streaming mixer.** MODE_STREAM would
+  also have fixed the silence, and it is the safer default for audio that is rewritten each
+  time — but the click is not rewritten. It is one fixed 30ms buffer replayed on every beat, and
+  a pre-loaded static buffer retriggered with `stop`/`reloadStaticData`/`play` has the lowest
+  jitter available without an audio callback and costs no render thread between beats. Streaming
+  it would mean either a second always-running renderer beside `AudioTrackTonePlayer`'s, or a
+  start-up on every beat, and both are worse for a thing whose entire job is landing on time.
+  The trade accepted is that MODE_STATIC has this initialisation order to get right, which is
+  now held by an instrumented test rather than by memory.
+
+- **`stateName` exists because `state=2` cost a session.** The old line called state 2
+  "uninitialised", which is what `STATE_UNINITIALIZED` is called — except that constant is 0,
+  and 2 is `STATE_NO_STATIC_DATA`. A report that names the wrong condition is worse than one
+  that prints a bare number, because it sends the next session looking in the wrong place; it
+  took reading `android.jar` to find that the log was the thing lying.
+
+- **`framesHeard` is a field surfaced through `state`, not a `counted`.** It is the honest answer
+  to "did anything actually come out", read from `AudioTrack.playbackHeadPosition` before each
+  retrigger and once more at `release`, so a completed click contributes its whole 1440 frames.
+  It was briefly a `counted`, which was a self-inflicted version of the bounded-buffer rule in
+  `CLAUDE.md`: `RingBufferDiag.counted` flushes a running-total *event* once the pending
+  increment reaches 250, and an increment of 1440 clears that on every single beat — one line per
+  click, roughly 270 of a 600-entry buffer over a three-minute session. A monotonic total belongs
+  in `state`, which is replaced in place and costs one line however long the session runs.
+  `beatsPlayed` stays `counted` because it increments by one.
+
+- **What the instrumented proof actually proves.** `framesHeard` says the audio device's playback
+  head advanced through every frame of every click — the track was accepted, started, and
+  consumed at the real-time rate. It does not prove a speaker moved; nothing available from here
+  can. The emulator's own report after a four-beat bar reads
+  `beatsPlayed: 4`, `heard=5760frames` (4 × 1440 at 48kHz) with no `beatsWithNoTrack`, and the
+  running app's report after a ten-note exercise reads `beatsPlayed: 21` against the 21 beats it
+  decided (`accents: 6` + `clicks: 15`), where the same report a pass earlier read
+  `beatsWithNoTrack: 21`.
+
+- **`grantRecordAudio` uses `executeShellCommand`, not a manifest entry.** RECORD_AUDIO is a
+  runtime permission, so declaring it in the androidTest manifest grants nothing and the five
+  capture tests failed with `capture refused: the microphone permission has not been granted` —
+  which is the capture behaving correctly and the test harness being wrong. `GrantPermissionRule`
+  would be the idiomatic fix but lives in `androidx.test:rules`, which this project does not
+  depend on and which is not this module's to add; the instrumentation's own `pm grant` does the
+  same job with what is already here. The stream is drained rather than closed immediately,
+  because that is what waits for the command to finish.
+
+- **`AudioTrackTonePlayer` does not share the metronome's fault, and that was checked rather than
+  assumed.** It is MODE_STREAM, where the state after construction genuinely is
+  `STATE_INITIALIZED`, and its five instrumented tests pass on the device — including
+  `lastPlayback` returning a real anchor, which requires the track to have actually presented
+  frames. Two smaller things were fixed while in there: the render loop now catches
+  `IllegalStateException` so a track released underneath it logs and exits instead of killing the
+  process from a background thread, and `release` says so when the renderer is still alive after
+  its join rather than releasing the native track in silence.
 
 ## :core:database
 
@@ -1676,11 +1738,10 @@ Agents implementing a module append their own `##` section and never rewrite ano
   `StoredReading<List<RouteLatency>>` and no entity crosses the boundary. Nothing in `:app` may go
   back to a DAO for the same reason: the store is where a refusal becomes a value instead of a crash.
 
-- **`SESSION_READS_SETTINGS` is a named constant set to false, and the screen shows a caveat while it
-  is.** Every stored preference is currently written and restored but not read by a session — the
-  tempo comes from the piece, the metronome and input are chosen on the practice screen. A control
-  that looks live and does nothing is a small lie told every time it is touched, so the screen states
-  the gap. Flipping the constant is the whole change when the session starts reading them.
+- **`SESSION_READS_SETTINGS` is gone, and with it the caveat that explained the gap.** Every stored
+  preference is now read when a session loads — see *The session reads the settings* below for what
+  each one means. The caveat was honest while it was true; leaving it in place after the wiring
+  landed would be the same lie in the other direction.
 
 - **`latencyReading` is pure and separately tested because the wording is the failure mode.**
   docs/todos/measure-audio-latency.md exists to stop an assumed figure being presented as a measured
@@ -1765,9 +1826,200 @@ Agents implementing a module append their own `##` section and never rewrite ano
 
 - **`RepertoireRoute` parses the corpus on `Dispatchers.Default`.** `produceState` runs on the
   composition's dispatcher, so every entry to the tab was doing a DOM parse of every shipped piece on
-  the main thread. `AppPracticeWiring` already had this right and caches its result; the repertoire
-  row still re-parses per entry, which the diagnostics report shows as three `[musicxml] parsed` lines
-  each time. Off the main thread that is cheap enough to leave alone.
+  the main thread. The re-parse per entry is gone as of 2026-08-08 — see *One corpus, parsed once*
+  below.
 
 - **`describe(SkillTag.Leap(0))` said "Leaps of 0 semitones".** A leap of nothing is a repeated note,
   and it appears in the corpus often enough to read as a bug to a musician.
+
+### The results sheet says one number (2026-08-08)
+
+- **The hero number was `accuracy` while the headline, the tint and the meter beside it were
+  `cleanliness`.** So a run that played every written note *and* twenty that were not written showed a
+  large **100%**, in red, under "Rough one" — two numbers on one screen telling Dewi opposite things
+  about the same performance. `ResultTone`'s own KDoc had already argued why the verdict must come
+  from cleanliness; the big number simply had not been moved with it. It is now
+  `CountingPercent(result.cleanliness)`, and every mark on the sheet reads from that one quantity.
+
+- **Accuracy is stated, not hidden.** `headlineBasis` spells out the arithmetic beside the number —
+  "3 of 4 written notes" with nothing extra, "3 right, out of 4 written + 1 unwritten" when there is —
+  so the denominator the headline used is visible rather than inferred. `extrasNote` then gives the
+  other figure explicitly ("counted against the 60% above — the written notes alone came to 75%").
+  Averaging the two into one figure was rejected: it would answer neither question.
+
+- **`extrasNote` drops the reconciliation when the two figures round the same.** On a 0%-correct run
+  both are 0%, and "counted against the 0% above — the written notes alone came to 0%" reads as
+  nonsense; it now says only that the extras were counted against him. Seen on the emulator before the
+  fix, which is why it is worth writing down: the failure was in the wording, not the arithmetic.
+
+- **The percentage is `percent()` from `ui/progress`, not a second `PERCENT_SCALE` here.** The results
+  sheet rounded the hero and truncated the extras figure, so the same quantity could print as 67% in
+  one place and 66% in the other. One function, one rounding.
+
+- **A session with nothing to judge shows an em dash, not `0%`.** `notesExpected == 0` makes both
+  ratios 0.0, and a big red zero under "Nothing to judge" tells him he got everything wrong. The meter
+  is dropped for the same reason.
+
+- **"What held you up" is only shown when something did.** The list is the six *weakest* outcomes, so
+  a clean run put six skills at 6/6 under a heading claiming they had held him up. It now reads
+  "Nothing held you up" with the line "Every reading skill this piece exercised came out clean" —
+  entailed, because if the weakest outcome is 1.0 then all of them are. The empty case said "not
+  exercised enough to grade", implying a threshold that does not exist; it says "was not exercised".
+
+- **`drillTarget` is one function, and the button label and the session must both use it.**
+  `PracticeViewModel.drillTarget` skips `SkillTag.HandIndependence` for a mono input (spec I3 — a mic
+  cannot hear both hands) while `ResultsSheet` labelled the button from the unfiltered weakest, so on
+  a mic session whose worst skill was hand independence the button said "Drill both hands at once" and
+  the app then drilled something else. This is reachable: `bothHandsSound` tags a measure where both
+  staves have notes even when nothing overlaps, so a grand-staff piece with alternating hands is
+  `Polyphony.Mono` (accepted on the mic) and still carries the tag. `ui/results/DrillTarget.kt` now
+  holds the rule once. **It is not finished**: `ResultsSheet` takes `input: Polyphony` defaulting to
+  `Poly` because `PractiseRoute` is another agent's file this pass, so today's behaviour is unchanged
+  and the mic case still mislabels. Passing `state.input.polyphony` at the call site, and deleting the
+  view model's private copy in favour of this one, is the whole remaining change.
+
+### One corpus, parsed once (2026-08-08)
+
+- **`ParsedCorpus` exists because the corpus was being parsed twice over, by two caches.**
+  `AppPracticeWiring` cached its own `List<Score>`; `RepertoireRoute` re-parsed every shipped piece on
+  every entry to the tab (three `[musicxml] parsed` lines per visit in the report). It holds
+  `MusicXmlResult` rather than `Score` because the repertoire screen exists to show what the parse
+  *dropped* and what *failed*, which a list of scores has already thrown away.
+
+- **The cache is keyed on the parser instance it was built with.** A cache that ignores its input
+  would hand a second parser the first one's answers, which is how two builds come to disagree
+  silently. A different parser re-parses.
+
+- **A missing corpus resource is now a failed row, not a dead tab.** `Corpus.read` throws
+  `requireNotNull` when the resource is absent, and that threw straight out of `produceState`. The
+  card that used to claim an empty list meant missing resources now says what an empty list actually
+  means, because a missing file arrives as a `Failed` piece with its reason.
+
+- **It lives in `ui/repertoire` only because `di/` belonged to another agent this pass.** It is not UI:
+  `AppContainer` should hold it and `AppPracticeWiring.corpus()` should become
+  `ParsedCorpus.of(...).mapNotNull { it.score }`, deleting that class's `corpusLock`/`parsedCorpus`/
+  `parseCorpus`. Until then there are still two caches, which is the duplication this was meant to end.
+
+- **Proven on the emulator.** `corpus/servedFromCache: 4` in the counted section after five visits to
+  the tab, with one `[corpus] parsed pieces=3 readable=3 failed=0` line and no further
+  `[musicxml] parsed` events.
+
+### Sentences the data did not support (2026-08-08)
+
+- **"…every one of them from notes you actually played."** A `SkillOutcome` counts every *judged* note,
+  and `Verdict.Missed` is a note he did not play. After an all-missed session the header claimed
+  twenty-one skills had come from notes he played. It now says "from notes this app put in front of
+  you".
+
+- **`SkillBucket.Due` said "What the scheduler will hand you next."** `next()` takes the weakest five
+  of the due set and hands back one piece, so the bucket is what it *picks from*, not what he is
+  getting.
+
+- **The trend strip draws accuracy, and now says so.** `StoredSession` records `notesExpected` and
+  `correct` and no count of extras, so the bars cannot show the results sheet's headline — and after
+  that headline changed, an unlabelled strip would have been the same lie moved one screen across. The
+  caption states what a bar is and that a noisy run reads higher here than it did on its own results
+  sheet. Making them agree needs either an `extras` column on the session row or a
+  `SessionStore.judgements(id)` read per bar; both are outside `ui/**`.
+
+- **`trendText` said "the last few sessions beat the ones before".** `trendOf` compares the older half
+  of the *drawn* bars with the newer half and drops the middle point on an odd count, so "the last few"
+  was vague enough to read as a claim about his practice generally — it now names the halves. It fired
+  "Improving" on a screen where every bar was near zero, which is arithmetically true and was worth
+  making precise rather than louder.
+
+- **A `Polyphony.Poly` piece whose `firstPolyphonicBar` was null claimed bar 1.** The two travel
+  separately on `RepertoireRow` even though `Score.polyphony` is derived from
+  `firstPolyphonicMeasure()`, so the fallback could only ever have printed a bar number that was not
+  the answer. It now omits the bar rather than inventing one.
+
+- **Knowingly left: `MIN_VISIBLE = 0.03f` draws a sliver for a 0% session.** A bar of literally nothing
+  is indistinguishable from a session that is not there, and the strip's own captions give the figure.
+  Worth revisiting if the sliver is ever read as a score.
+
+### The session reads the settings (2026-08-08)
+
+- **The stored tempo is a ceiling, not an override, and that is the whole decision.** A `Score`
+  carries its own `defaultTempoBpm`, so a stored figure could have meant three things.
+  `sessionTempoBpm(written, ceiling) = min(...)` was chosen because a sight-reader's need is *slower
+  than written until I can read it* — never faster. An override would drag a 60bpm beginner exercise
+  up to 72 because the setting said so, which nobody wants and which makes the easiest material
+  harder. A percentage would need a field `PracticeSettings` does not have, and "50%" means 60bpm on
+  Bach and 30bpm on a first exercise, which drills nothing. A ceiling only ever slows, so the control
+  can honestly be labelled *Top tempo … bpm at most* and the screen can promise that a piece written
+  slower keeps its own tempo. `AppContainer.conductorFor(score, tempoCeilingBpm)` is the only place it
+  is applied; the view model calls the same pure function once more for the refusal card, which has no
+  conductor to ask.
+
+- **A preference decides how a run *starts*; it is not observed while one is running.** `load()` reads
+  `SessionPreferences.settings()` once per session and applies tempo, metronome and listen-first there.
+  Collecting the settings flow into the view model would have fought the mic mute below, and would mean
+  changing a setting mid-piece silently retimed the music under the playhead.
+
+- **The mic mute must not be written back.** Selecting PLAY IT forces the metronome and echo off for
+  the run (the microphone would otherwise hear the click and score it as a note). That is a *forced
+  state*, not a preference, so `selectInput` never saves `metronomeOn`; only the chip Dewi taps does.
+  Without the split, one mic session would permanently turn his metronome off. `SessionReadsSettingsTest`
+  pins it: "the mic muting the metronome does not turn his metronome preference off".
+
+- **The input preference is resolved before the scheduler is asked anything.** A mono input must never
+  be handed two-hand material (docs/spec.md I3), and `chooseNext` takes the polyphony — so the first
+  `choose` reads the stored input first, then selects. That is why the resolution lives inside `choose`
+  rather than in a `begin()` of its own: detekt's `thresholdInClasses: 14` fires *at* 14, and a separate
+  entry point plus its shared selection body took `PracticeViewModel` to 16 functions. The selection
+  `when` moved to a top-level `PracticeWiring.selectionFor` for the same budget.
+
+- **A permission granted once can be taken back, so the stored PLAY IT is checked against the phone
+  every time.** `openingInput(settings, micGranted)` returns the mode *and* whether the stored one was
+  refused; a refusal opens on TAP, says so in the words Dewi sees, and **leaves the preference alone**
+  so it is honoured again the moment he re-grants. Verified on the emulator by revoking `RECORD_AUDIO`
+  with `adb`: the session opened on TAP with the notice and the row still read `mic`.
+
+- **`listenFirstOn` was the fourth control nobody had noticed was dead.** The brief named tempo,
+  metronome and input; deleting the caveat would have left "Listen first" as decoration with nothing
+  saying so. It now runs the existing `listen()` preview at the end of `load`, and `mayListenFirst` is
+  false for a repeat (`Again` starts the transport itself, so a preview would swallow the button) and
+  for an input switch (Dewi already heard it). Both the firing and the suppression are logged, because
+  "nothing played" is otherwise indistinguishable from a broken preference.
+
+- **`AppContainer.settingsStore` exists so there is exactly one settings store.** `SettingsRoute` used
+  to construct its own `RoomSettingsStore`; a session reading a second instance would be two answers to
+  one question. The route now takes the container's, and the view model reaches it through
+  `SessionPreferences` — segregated from `PracticeWiring` so a caller that wants the tempo cannot also
+  reach the corpus, the stores and the judge.
+
+- **`SessionPreferences.remember` is read-modify-write inside the store owner.** The alternative is
+  handing the view model a `PracticeSettings` to edit, which is a second copy of the current tempo by
+  another name. Verified on the device: toggling the metronome wrote `metronomeOn` and left
+  `inputLabel=mic` untouched in the row.
+
+- **The Settings screen used to render defaults until the row arrived.** `collectAsStateWithLifecycle`
+  was seeded with `PracticeSettings()`, so for the frames before Room emitted, the screen showed 72bpm
+  and "nothing chosen" — and a tap in that window would have saved those defaults over the real values.
+  It now collects a nullable and shows a one-line panel until the read lands. The window is short; the
+  consequence was silently overwriting every preference at once.
+
+- **`InputMode` carries the stored label, and `InputChoice` reads it rather than spelling "tap" again.**
+  The label must equal the adapter's own `AnswerSource.label`, since that is what `StoredSession` and
+  `PracticeSettings.inputLabel` hold. `SessionPreferencesTest` pins the tap side against a real
+  `KeyboardTapSource`; the mic side cannot be constructed on the JVM (it opens `AudioRecord`), so that
+  half is held by the round-trip test and by the on-device check rather than by the compiler.
+
+- **`PracticeIntent.DrillWeakest` never actually drilled the weakest skill.** `choose` cleared
+  `result` before the coroutine read `_state.value.result`, so the target was always null and every
+  drill quietly fell through to `chooseNext` — the button named a skill (`ui.results.drillTarget`) that
+  the session then ignored. The result is captured before the reset now. Found while removing the
+  view model's private copy of `drillTarget`, which was the same decision written twice.
+
+- **`PractiseRoute` passes `state.input.polyphony` to `ResultsSheet`.** The parameter had a default of
+  `Polyphony.Poly`, so a mic session's results sheet would offer a hand-independence drill that the
+  session's own judge refuses.
+
+- **What was verified on the emulator.** Set the tempo ceiling to 47, the metronome off and the input
+  to PLAY IT; force-stopped; relaunched. The session opened on MIC at **47bpm** (written 60) with the
+  metronome chip off, and the report carried
+  `settings applied tempo=47bpm [written=60bpm ceiling=47bpm capped=true] metronome=false
+  [stored=false micMutes=true] input=Mic [stored=mic] listenFirst=false [applies=true]`. Then: the
+  metronome toggled on the practice screen survived a force-stop; `listenFirstOn` produced "PLAYING FOR
+  YOU" on the next launch; revoking `RECORD_AUDIO` opened the next session on TAP with the notice and
+  left the row on `mic`; and restoring the ceiling to 73 put a 60bpm exercise back at its own 60.

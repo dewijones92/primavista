@@ -103,7 +103,7 @@ private fun ProgressHeader(states: List<SkillState>) {
         Spacer(Modifier.height(2.dp))
         Text(
             text = "${states.size} reading skill${if (states.size == 1) "" else "s"} tracked, " +
-                "every one of them from notes you actually played.",
+                "every one of them from notes this app put in front of you.",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

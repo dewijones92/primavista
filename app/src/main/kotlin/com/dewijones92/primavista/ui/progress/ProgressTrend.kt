@@ -84,6 +84,8 @@ private fun SessionBars(shown: List<SessionPoint>) {
         Caption("${shown.size} shown · oldest left")
         Caption("${percent(shown.last().accuracy)}% latest")
     }
+    Spacer(Modifier.height(TIGHT_GAP))
+    Caption(WHAT_THE_BARS_ARE)
 }
 
 @Composable
@@ -135,6 +137,11 @@ internal fun EmptyProgress(sessions: StoredReading<List<SessionPoint>>?, modifie
         TrendStrip(sessions)
     }
 }
+
+/** The stored session keeps no count of unwritten notes. See `.claude/CODE-NOTES.md`. */
+private const val WHAT_THE_BARS_ARE =
+    "Each bar is the written notes of that session played correctly. Notes you added are not " +
+        "stored per session, so a noisy run reads higher here than it did on its results sheet."
 
 private const val MAX_BARS = 12
 private const val BAR_MILLIS = 520

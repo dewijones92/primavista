@@ -71,6 +71,9 @@ public class AudioTrackTonePlayer(
         renderer = null
         thread?.interrupt()
         thread?.join(JOIN_TIMEOUT_MILLIS)
+        if (thread?.isAlive == true) {
+            diag.event(TAG, "renderer still alive after ${JOIN_TIMEOUT_MILLIS}ms; releasing anyway")
+        }
         val output = track
         track = null
         if (output != null) {
@@ -169,16 +172,20 @@ public class AudioTrackTonePlayer(
 
     private fun renderLoop(output: AudioTrack) {
         val buffer = FloatArray(RENDER_FRAMES)
-        while (running) {
-            val frames = mixer.render(buffer)
-            val written = output.write(buffer, 0, frames, AudioTrack.WRITE_BLOCKING)
-            if (written < 0) {
-                diag.event(TAG, "write failed code=$written; stopping renderer")
-                running = false
-            } else if (written != frames) {
-                diag.counted(TAG, "shortWrites")
-                diag.event(TAG, "short write $written of $frames frames; the frame anchor now lags")
+        try {
+            while (running) {
+                val frames = mixer.render(buffer)
+                val written = output.write(buffer, 0, frames, AudioTrack.WRITE_BLOCKING)
+                if (written < 0) {
+                    diag.event(TAG, "write failed code=$written; stopping renderer")
+                    running = false
+                } else if (written != frames) {
+                    diag.counted(TAG, "shortWrites")
+                    diag.event(TAG, "short write $written of $frames frames; the frame anchor now lags")
+                }
             }
+        } catch (failure: IllegalStateException) {
+            diag.event(TAG, "renderer aborted: ${failure.message}")
         }
         diag.event(TAG, "renderer exited framesWritten=${mixer.framesRendered}")
     }

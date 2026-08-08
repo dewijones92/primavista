@@ -193,8 +193,8 @@ private fun ExpandedDetail(row: RepertoireRow, onPractise: (CorpusPiece) -> Unit
     if (row.polyphony == Polyphony.Poly) {
         Heading("On the microphone")
         Text(
-            text = "Refused from bar ${row.firstPolyphonicBar ?: 1}: a mic follows one line, and " +
-                "half-hearing two would score notes it never heard.",
+            text = "Refused ${row.firstPolyphonicBar?.let { "from bar $it" } ?: "here"}: a mic " +
+                "follows one line, and half-hearing two would score notes it never heard.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -263,8 +263,8 @@ private fun NoPieces() {
         Text("No pieces are shipped in this build", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(GAP))
         Text(
-            text = "That is a packaging fault rather than an empty library — the corpus is " +
-                "compiled in, so an empty list means the resources did not make it into the APK.",
+            text = "The corpus is a compiled-in list and this build's is empty. A piece whose " +
+                "file was missing or unreadable would still be listed here, with its reason.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

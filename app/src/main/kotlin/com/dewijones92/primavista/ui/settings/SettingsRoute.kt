@@ -21,7 +21,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dewijones92.primavista.PrimaVistaApp
 import com.dewijones92.primavista.database.DatabaseOpening
 import com.dewijones92.primavista.database.PracticeSettings
-import com.dewijones92.primavista.database.RoomSettingsStore
 import com.dewijones92.primavista.database.RouteLatency
 import com.dewijones92.primavista.database.StoredReading
 import com.dewijones92.primavista.database.map
@@ -37,7 +36,7 @@ import kotlinx.coroutines.launch
 public fun SettingsRoute(modifier: Modifier = Modifier) {
     val app = LocalContext.current.applicationContext as? PrimaVistaApp
     if (app == null) {
-        Unavailable("Settings need the running app; this is a preview.", modifier)
+        Panel("Settings unavailable", "Settings need the running app; this is a preview.", modifier)
         return
     }
     SettingsRoute(app.container, modifier)
@@ -45,53 +44,57 @@ public fun SettingsRoute(modifier: Modifier = Modifier) {
 
 @Composable
 public fun SettingsRoute(container: AppContainer, modifier: Modifier = Modifier) {
-    when (val opening = container.databaseOpening) {
-        is DatabaseOpening.Unreadable -> UnreadablePanel("your settings", opening.reason, modifier)
-        is DatabaseOpening.Opened -> {
-            val store = remember(opening) { RoomSettingsStore(opening.database, container.diag) }
-            val scope = rememberCoroutineScope()
-            val settings by remember(store) { store.observe() }
-                .collectAsStateWithLifecycle(PracticeSettings())
-            val latencies by produceState<StoredReading<List<RouteLatency>>?>(null, store) {
-                value = store.latencies()
-            }
-            val sessions by produceState<StoredReading<SessionCount>?>(null, container) {
-                value = container.sessionStore?.recent(HISTORY_PROBE_LIMIT)
-                    ?.map { SessionCount(it.size, capped = it.size >= HISTORY_PROBE_LIMIT) }
-                    ?: StoredReading.Unreadable(HISTORY, "the practice database could not be opened")
-            }
-            SettingsScreen(
-                settings = settings,
-                latencies = latencies,
-                storedSessions = sessions,
-                appliedYet = SESSION_READS_SETTINGS,
-                onSettings = { scope.launch { store.save(it) } },
-                modifier = modifier,
-            )
-        }
+    val store = container.settingsStore
+    if (store == null) {
+        val reason = (container.databaseOpening as? DatabaseOpening.Unreadable)?.reason
+            ?: "the practice database could not be opened"
+        UnreadablePanel("your settings", reason, modifier)
+        return
     }
+    val scope = rememberCoroutineScope()
+    // Null until the row is read.
+    val settings by remember(store) { store.observe() }
+        .collectAsStateWithLifecycle<PracticeSettings?>(null)
+    val latencies by produceState<StoredReading<List<RouteLatency>>?>(null, store) {
+        value = store.latencies()
+    }
+    val sessions by produceState<StoredReading<SessionCount>?>(null, container) {
+        value = container.sessionStore?.recent(HISTORY_PROBE_LIMIT)
+            ?.map { SessionCount(it.size, capped = it.size >= HISTORY_PROBE_LIMIT) }
+            ?: StoredReading.Unreadable(HISTORY, "the practice database could not be opened")
+    }
+    val stored = settings
+    if (stored == null) {
+        Panel(
+            title = "Reading your settings…",
+            detail = "Shown once they are read, so a control cannot save a default over them.",
+            modifier = modifier,
+        )
+        return
+    }
+    SettingsScreen(
+        settings = stored,
+        latencies = latencies,
+        storedSessions = sessions,
+        onSettings = { scope.launch { store.save(it) } },
+        modifier = modifier,
+    )
 }
 
 @Composable
-private fun Unavailable(reason: String, modifier: Modifier) {
+private fun Panel(title: String, detail: String, modifier: Modifier) {
     Box(modifier.fillMaxSize().padding(SCREEN_PADDING), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Settings unavailable", style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(GAP))
             Text(
-                text = reason,
+                text = detail,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
-
-/**
- * Flipped to true the moment a practice session reads [PracticeSettings]. Until then the screen
- * says so rather than letting a control look live — see `.claude/CODE-NOTES.md`.
- */
-private const val SESSION_READS_SETTINGS = false
 
 private const val HISTORY_PROBE_LIMIT = 200
 

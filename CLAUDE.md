@@ -153,9 +153,19 @@ strongest one available:
 
 Concretely, and non-negotiably:
 
-- **`allWarningsAsErrors` on every module**, configured once in the root build's
-  `kotlinDefaults`. A warning is the compiler saying it found something and decided not to
-  stop you; on a one-person app nobody triages a warning list, so it must stop you.
+- **`allWarningsAsErrors` on every module**, set once in the root build's `subprojects` block
+  so a new module cannot be lax by forgetting to opt in. A warning is the compiler saying it
+  found something and decided not to stop you; nobody triages a warning list on a one-person
+  app, so it must stop you. `-Xjsr305=strict` rides along, so annotated Java interop is
+  checked rather than trusted as a platform type.
+
+  It was **verified by making it fire**, not by turning it on and seeing green: a deprecated
+  call was added deliberately, the build failed with `e: warnings found and -Werror
+  specified`, and the probe was then removed. Worth knowing because the first attempt to
+  measure the existing warning count returned zero and was *wrong about why* — `val unused =
+  42` is an IDE inspection, not a K2 compiler warning, so an absent warning had been read as
+  a clean codebase. It happened to be clean; the check had not shown that. **If you tighten a
+  gate, make it fail once on purpose before believing it.**
 - **`explicitApi()` on every pure-JVM module.** Public API is deliberate, and a return type
   is stated rather than inferred.
 - **Android lint with `warningsAsErrors = true` and `abortOnError = true`**, applied to

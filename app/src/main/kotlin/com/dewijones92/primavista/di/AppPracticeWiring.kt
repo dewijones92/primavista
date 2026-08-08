@@ -38,13 +38,17 @@ public class AppPracticeWiring(private val container: AppContainer) : PracticeWi
     override val metrics: GlyphMetrics get() = container.glyphMetrics
     override val metronome: Metronome get() = container.metronome
     override val tonePlayer: TonePlayer get() = container.tonePlayer
+    override val preferences: SessionPreferences = StoredPreferences(container, container.diag)
 
     private val corpusLock = Mutex()
     private var parsedCorpus: List<Score>? = null
 
     override fun nowEpochMillis(): Long = System.currentTimeMillis()
 
-    override fun conductorFor(score: Score): Conductor = container.conductorFor(score)
+    override fun microphoneGranted(): Boolean = container.microphoneGranted()
+
+    override fun conductorFor(score: Score, tempoCeilingBpm: Int): Conductor =
+        container.conductorFor(score, tempoCeilingBpm)
 
     override fun judgeFor(score: Score): PerformanceJudge = container.judgeFor(score)
 

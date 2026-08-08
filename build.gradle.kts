@@ -2,6 +2,7 @@ import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.api.dsl.LibraryExtension
 import com.android.build.api.dsl.Lint
 import io.gitlab.arturbosch.detekt.extensions.DetektExtension
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     alias(libs.plugins.android.application) apply false
@@ -42,6 +43,20 @@ val androidDefaults: com.android.build.api.dsl.CommonExtension.() -> Unit = {
 // Every module gets the same static-analysis gate; adding a module adds its gate.
 subprojects {
     apply(plugin = "io.gitlab.arturbosch.detekt")
+
+    // Shift left (CLAUDE.md): the compiler is the cheapest place to catch anything, so it is
+    // configured to stop rather than to advise. Set here rather than per module, so a new module
+    // cannot be strict-by-forgetting-to-opt-out.
+    tasks.withType<KotlinCompile>().configureEach {
+        compilerOptions {
+            // A warning is the compiler saying it found something and decided not to stop you.
+            // Nobody triages a warning list on a one-person app, so it has to stop you.
+            allWarningsAsErrors.set(true)
+            // Trust JSR-305 nullability annotations on Java interop instead of treating those
+            // types as platform types the compiler cannot check.
+            freeCompilerArgs.addAll("-Xjsr305=strict")
+        }
+    }
 
     extensions.configure<DetektExtension> {
         buildUponDefaultConfig = true

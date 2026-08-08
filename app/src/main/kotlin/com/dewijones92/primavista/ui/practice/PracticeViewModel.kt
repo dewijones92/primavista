@@ -10,6 +10,8 @@ import com.dewijones92.primavista.database.StoredSession
 import com.dewijones92.primavista.di.InputMode
 import com.dewijones92.primavista.di.PracticeSelection
 import com.dewijones92.primavista.di.PracticeWiring
+import com.dewijones92.primavista.di.openingInput
+import com.dewijones92.primavista.di.sessionTempoBpm
 import com.dewijones92.primavista.notation.GlyphMetrics
 import com.dewijones92.primavista.notation.StaffSpaces
 import com.dewijones92.primavista.notation.StaffSystem
@@ -26,11 +28,11 @@ import com.dewijones92.primavista.practice.Verdict
 import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.Midi
 import com.dewijones92.primavista.score.Note
-import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.Score
 import com.dewijones92.primavista.score.SkillTag
 import com.dewijones92.primavista.score.Ticks
 import com.dewijones92.primavista.score.TimeSignature
+import com.dewijones92.primavista.ui.results.drillTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -99,28 +101,43 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
     private var loaded: Score? = null
     private var record: SessionRecord? = null
     private var handledRequest = 0
+    private var opened = false
     private val playback = ScorePlayback(wiring.tonePlayer)
 
     public val glyphMetrics: GlyphMetrics get() = wiring.metrics
 
-    /** The ladder. Every entry to the screen asks the scheduler rather than opening the same piece. */
+    /**
+     * The ladder. Every entry to the screen asks the scheduler rather than opening the same piece.
+     *
+     * The **first** call also resolves what is listening from the stored preference, and does it
+     * before anything is chosen — see `.claude/CODE-NOTES.md`.
+     */
     public fun choose(intent: PracticeIntent) {
         if (_state.value.loading) return
+        // The reset below clears it.
+        val finished = _state.value.result
+        val repeating = loaded?.let { PracticeSelection(it, _state.value.targeting, _state.value.choiceSummary) }
         _state.value = _state.value.copy(loading = true, notice = null, result = null)
         viewModelScope.launch {
+            if (!opened) {
+                opened = true
+                val stored = wiring.preferences.settings()
+                val granted = wiring.microphoneGranted()
+                val opening = openingInput(stored, granted)
+                diag.event(
+                    TAG,
+                    "opens on input=${opening.mode.name} [stored=${stored.inputLabel ?: "(unchosen)"} " +
+                        "micGranted=$granted revoked=${opening.revoked}]",
+                )
+                _state.value = _state.value.copy(
+                    input = opening.mode,
+                    notice = if (opening.revoked) MIC_REVOKED else null,
+                )
+            }
             val input = _state.value.input
             val seed = wiring.nowEpochMillis()
             val selection = runCatching {
-                when (intent) {
-                    PracticeIntent.Next -> wiring.chooseNext(input.polyphony, seed)
-                    PracticeIntent.Again ->
-                        loaded
-                            ?.let { PracticeSelection(it, _state.value.targeting, _state.value.choiceSummary) }
-                            ?: wiring.chooseNext(input.polyphony, seed)
-                    PracticeIntent.DrillWeakest -> drillTarget(_state.value.result, input)
-                        ?.let { wiring.chooseDrill(it, input.polyphony, seed) }
-                        ?: wiring.chooseNext(input.polyphony, seed)
-                }
+                wiring.selectionFor(intent, input, seed, repeating, finished)
             }.getOrElse {
                 diag.event(TAG, "intent=$intent produced nothing: ${it::class.simpleName} ${it.message}")
                 null
@@ -130,7 +147,7 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
                 return@launch
             }
             diag.event(TAG, "intent=$intent input=${input.name} seed=$seed -> '${selection.score.title}'")
-            load(selection, input)
+            load(selection, input, mayListenFirst = intent != PracticeIntent.Again)
             if (intent == PracticeIntent.Again) play()
         }
     }
@@ -147,7 +164,7 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
                 return@launch
             }
             diag.event(TAG, "repertoire request=$requestId -> '${selection.score.title}'")
-            load(selection, _state.value.input)
+            load(selection, _state.value.input, mayListenFirst = true)
         }
     }
 
@@ -169,19 +186,25 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
             "input ${_state.value.input.name}->${mode.name} poly=${mode.polyphony} " +
                 "metronome=${!muted} echo=${!muted} (the mic hears the app's own sound, so both mute)",
         )
+        if (muted) wiring.metronome.enabled = false
         _state.value = _state.value.copy(
             input = mode,
-            metronomeOn = !muted,
+            metronomeOn = _state.value.metronomeOn && !muted,
             echoOn = !muted,
             notice = if (muted) MIC_MUTES else null,
         )
-        wiring.metronome.enabled = !muted
-        val score = loaded ?: return
         viewModelScope.launch {
-            load(PracticeSelection(score, _state.value.targeting, _state.value.choiceSummary), mode)
+            wiring.preferences.remember { it.copy(inputLabel = mode.label) }
+            val score = loaded ?: return@launch
+            load(
+                selection = PracticeSelection(score, _state.value.targeting, _state.value.choiceSummary),
+                input = mode,
+                mayListenFirst = false,
+            )
         }
     }
 
+    /** The metronome is a stored preference and is written back here; the echo is per-session only. */
     public fun toggle(feature: PracticeToggle) {
         val current = _state.value
         val next = when (feature) {
@@ -189,8 +212,15 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
             PracticeToggle.Echo -> current.copy(echoOn = !current.echoOn)
         }
         wiring.metronome.enabled = next.metronomeOn
-        diag.event(TAG, "$feature toggled: metronome=${next.metronomeOn} echo=${next.echoOn} src=${next.inputLabel}")
+        diag.event(
+            TAG,
+            "$feature toggled: metronome=${next.metronomeOn} echo=${next.echoOn} src=${next.inputLabel} " +
+                "saved=${feature == PracticeToggle.Metronome}",
+        )
         _state.value = next
+        if (feature == PracticeToggle.Metronome) {
+            viewModelScope.launch { wiring.preferences.remember { it.copy(metronomeOn = next.metronomeOn) } }
+        }
     }
 
     /**
@@ -339,11 +369,16 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
         _state.value = _state.value.copy(result = null, notice = null)
     }
 
-    private suspend fun load(selection: PracticeSelection, input: InputMode) {
+    /**
+     * Applies what Dewi asked for, every time a session opens. See `.claude/CODE-NOTES.md` for what
+     * each stored preference means and why [mayListenFirst] is not simply the stored flag.
+     */
+    private suspend fun load(selection: PracticeSelection, input: InputMode, mayListenFirst: Boolean) {
         collection?.cancel()
         wiring.metronome.stop()
         conductor?.stop()
         val score = selection.score
+        val stored = wiring.preferences.settings()
         val source = wiring.sourceFor(input)
         val judge = wiring.judgeFor(score)
         this.source = source
@@ -354,6 +389,7 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
 
         val refusal = judge.accepts(score, source)
         if (refusal != null) {
+            this.conductor = null
             diag.event(
                 TAG,
                 "refused '${score.title}' src=${source.label} poly=${score.polyphony} " +
@@ -361,7 +397,8 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
             )
             _state.value = _state.value.copy(
                 score = score, system = null, refusal = refusal, result = null, loading = false,
-                inputLabel = source.label, input = input, tempoBpm = score.defaultTempoBpm,
+                inputLabel = source.label, input = input,
+                tempoBpm = sessionTempoBpm(score.defaultTempoBpm, stored.tempoBpm),
                 targeting = selection.targeting, choiceSummary = selection.summary,
                 transport = TransportState.Idle, previewing = false,
             )
@@ -369,7 +406,19 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
         }
 
         val system = withContext(Dispatchers.Default) { wiring.layout.layout(score, wiring.metrics) }
-        val conductor = wiring.conductorFor(score).also { this.conductor = it }
+        val conductor = wiring.conductorFor(score, stored.tempoBpm).also { this.conductor = it }
+        val micMutes = input == InputMode.Mic
+        val metronomeOn = stored.metronomeOn && !micMutes
+        wiring.metronome.enabled = metronomeOn
+        diag.event(
+            TAG,
+            "settings applied tempo=${conductor.tempoBpm}bpm " +
+                "[written=${score.defaultTempoBpm}bpm ceiling=${stored.tempoBpm}bpm " +
+                "capped=${conductor.tempoBpm < score.defaultTempoBpm}] " +
+                "metronome=$metronomeOn [stored=${stored.metronomeOn} micMutes=$micMutes] " +
+                "input=${input.name} [stored=${stored.inputLabel ?: "(unchosen)"}] " +
+                "listenFirst=${stored.listenFirstOn} [applies=$mayListenFirst]",
+        )
         diag.event(
             TAG,
             "loaded '${score.title}' [origin=${score.origin::class.simpleName} " +
@@ -381,16 +430,23 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
             val s = _state.value
             "transport=${s.transport} pos=${s.position.value} judged=${s.verdicts.size}/" +
                 "${s.score?.attackedNotes?.size ?: 0} extras=${s.extras} src=${s.inputLabel} " +
-                "metronome=${s.metronomeOn} echo=${s.echoOn}"
+                "metronome=${s.metronomeOn} echo=${s.echoOn} tempo=${s.tempoBpm}bpm"
         }
 
         _state.value = _state.value.copy(
             score = score, system = system, transport = conductor.state, position = Ticks.ZERO,
             playheadX = StaffSpaces.ZERO, countInBeatsRemaining = 0, verdicts = emptyMap(), extras = 0,
             refusal = null, result = null, inputLabel = source.label, input = input,
-            tempoBpm = conductor.tempoBpm, targeting = selection.targeting,
-            choiceSummary = selection.summary, previewing = false, loading = false,
+            tempoBpm = conductor.tempoBpm, metronomeOn = metronomeOn, echoOn = !micMutes,
+            targeting = selection.targeting, choiceSummary = selection.summary,
+            previewing = false, loading = false,
         )
+
+        when {
+            stored.listenFirstOn && mayListenFirst -> listen()
+            stored.listenFirstOn ->
+                diag.event(TAG, "listen-first is on but this load is a repeat or an input switch, so nothing plays")
+        }
     }
 
     private fun finish() {
@@ -464,6 +520,24 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
 }
 
 /**
+ * What each intent means. [finished] is the session the results sheet is showing, and the drill it
+ * resolves to is the one that sheet already named — `ui.results.drillTarget` decides it once.
+ */
+private suspend fun PracticeWiring.selectionFor(
+    intent: PracticeIntent,
+    input: InputMode,
+    seed: Long,
+    repeating: PracticeSelection?,
+    finished: SessionResult?,
+): PracticeSelection = when (intent) {
+    PracticeIntent.Next -> chooseNext(input.polyphony, seed)
+    PracticeIntent.Again -> repeating ?: chooseNext(input.polyphony, seed)
+    PracticeIntent.DrillWeakest -> finished?.let { drillTarget(it, input.polyphony) }
+        ?.let { chooseDrill(it.tag, input.polyphony, seed) }
+        ?: chooseNext(input.polyphony, seed)
+}
+
+/**
  * The click is armed from the bar the piece actually opens on, so a pickup bar accents its real
  * downbeat rather than one derived from tick zero.
  */
@@ -492,17 +566,6 @@ private fun closesAt(score: Score, conductor: Conductor, judge: PerformanceJudge
     val tailNanos = ((judge?.tolerances?.maxWindowMillis ?: 0.0) * NANOS_PER_MILLI).toLong()
     return conductor.ticksAt(conductor.nanosFor(score.endsAt) + tailNanos)
 }
-
-/**
- * The worst skill of the session just played, which is what "drill the weakest" means on a results
- * sheet listing that session. A skill a mono input cannot hear is dropped here rather than being
- * generated and then refused.
- */
-private fun drillTarget(result: SessionResult?, input: InputMode): SkillTag? = result?.skillOutcomes
-    ?.filter { it.attempts > 0 }
-    ?.filterNot { input.polyphony == Polyphony.Mono && it.tag == SkillTag.HandIndependence }
-    ?.minByOrNull { it.accuracy }
-    ?.tag
 
 /**
  * One attempt, accumulated as it happens and written at pause as well as at the end.
@@ -578,6 +641,10 @@ private const val NOTHING_TO_READ =
 
 private const val MIC_REFUSED =
     "PLAY IT needs the microphone. Nothing is recorded or sent anywhere — the app has no internet permission."
+
+private const val MIC_REVOKED =
+    "PLAY IT is your saved input, but the microphone permission is off, so this session opens on TAP. " +
+        "Tap MIC to grant it again."
 
 private const val MIC_MUTES =
     "PLAY IT is listening, so the metronome and note echo are off: the mic would hear them and score them as notes."

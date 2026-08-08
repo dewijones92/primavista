@@ -1,17 +1,21 @@
 package com.dewijones92.primavista.audio
 
+import android.os.Build
+import android.util.Log
+import com.dewijones92.primavista.common.RingBufferDiag
 import com.dewijones92.primavista.score.MusicalTime
 import com.dewijones92.primavista.score.Ticks
 import com.dewijones92.primavista.score.TimeSignature
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
-/** NOT YET EXECUTED — written without a device. Audible: it clicks. */
+/** Audible: it clicks. Executed on an emulator, API 35, 2026-08-08. */
 class ClickMetronomeInstrumentedTest {
 
     private lateinit var diag: RecordingDiag
@@ -64,6 +68,39 @@ class ClickMetronomeInstrumentedTest {
     }
 
     @Test
+    fun bothClickTracksReachStateInitialisedRatherThanBeingDiscardedAtConstruction() {
+        metronome.configure(TEMPO_BPM, TimeSignature.FourFour)
+
+        for (name in listOf("beat", "accent")) {
+            assertNotNull(
+                "$name click track never reached STATE_INITIALIZED: ${diag.events}",
+                diag.events.firstOrNull { it.contains("$name click track ready state=INITIALIZED") },
+            )
+        }
+    }
+
+    @Test
+    fun theAudioDeviceRendersEveryClicksFramesInsteadOfBeatsFindingNoTrack() {
+        val clickFrames = ClickSynth.render(metronome.sampleRate, accent = false).size
+        metronome.configure(TEMPO_BPM, TimeSignature.FourFour)
+
+        walkABarPausingBetweenBeats()
+        metronome.release()
+
+        assertNull("a beat found no track: ${diag.events}", diag.counts["audio.metronome.beatsWithNoTrack"])
+        assertNull("a click failed: ${diag.events}", diag.counts["audio.metronome.clickFailures"])
+        assertNull("a rewind failed: ${diag.events}", diag.counts["audio.metronome.reloadFailures"])
+        assertEquals(BEATS_PER_BAR, diag.counts["audio.metronome.beatsPlayed"])
+
+        val expected = (clickFrames * BEATS_PER_BAR).toLong()
+        assertEquals(
+            "the audio device rendered ${metronome.framesHeard} click frames, not $expected",
+            expected,
+            metronome.framesHeard,
+        )
+    }
+
+    @Test
     fun staysSilentButAccountedForWhenDisabled() {
         metronome.configure(TEMPO_BPM, TimeSignature.FourFour)
         metronome.enabled = false
@@ -100,6 +137,35 @@ class ClickMetronomeInstrumentedTest {
         assertTrue((diag.counts["audio.metronome.ticksBetweenBeats"] ?: 0) > 0)
     }
 
+    /** docs/spec.md I7: the production report, not the test double, must settle this. */
+    @Test
+    fun aProductionReportSaysWhetherTheClickWasActuallyHeard() {
+        val realDiag = RingBufferDiag()
+        val real = ClickMetronome(realDiag)
+        val clickFrames = ClickSynth.render(real.sampleRate, accent = false).size
+
+        real.configure(TEMPO_BPM, TimeSignature.FourFour)
+        walkABarPausingBetweenBeats(real)
+        real.release()
+        val report = realDiag.report(mapOf("device" to Build.MODEL))
+        Log.i(REPORT_TAG, report)
+
+        assertTrue(report, report.contains("beat click track ready state=INITIALIZED"))
+        assertTrue(report, report.contains("accent click track ready state=INITIALIZED"))
+        assertTrue(report, report.contains("audio.metronome/beatsPlayed: $BEATS_PER_BAR"))
+        assertTrue(report, report.contains("released heard=${clickFrames * BEATS_PER_BAR}frames"))
+        assertFalse(report, report.contains("beatsWithNoTrack"))
+    }
+
+    /** Slower than any real tempo on purpose: each 30ms click must finish before the next. */
+    private fun walkABarPausingBetweenBeats(target: ClickMetronome = metronome) {
+        val quarter = MusicalTime.TICKS_PER_QUARTER
+        for (beat in 0 until BEATS_PER_BAR) {
+            target.onPosition(Ticks(beat * quarter))
+            Thread.sleep(BEAT_GAP_MILLIS)
+        }
+    }
+
     private fun walkOneBarFrom(start: Long) {
         val quarter = MusicalTime.TICKS_PER_QUARTER
         var position = start
@@ -114,5 +180,7 @@ class ClickMetronomeInstrumentedTest {
         const val BEATS_PER_BAR = 4
         const val STRIDE_TICKS = 140L
         const val SETTLE_MILLIS = 400L
+        const val BEAT_GAP_MILLIS = 250L
+        const val REPORT_TAG = "dewidebug"
     }
 }

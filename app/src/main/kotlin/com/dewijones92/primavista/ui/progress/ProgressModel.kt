@@ -11,7 +11,7 @@ import kotlin.math.roundToInt
  * thing docs/spec.md says it must never do.
  */
 internal enum class SkillBucket(val title: String, val blurb: String) {
-    Due("Due now", "What the scheduler will hand you next."),
+    Due("Due now", "What the scheduler picks from next."),
     Building("Building", "Read at least once, not yet reliable."),
     Mastered("Solid", "Reliable, and not due for review."),
 }
@@ -74,14 +74,14 @@ internal fun trendOf(points: List<SessionPoint>): Double? {
     return newer - older
 }
 
+/** Says which halves were compared, so it cannot be read as a claim about the run as a whole. */
 internal fun trendText(delta: Double?): String = when {
     delta == null -> "Not enough finished sessions to call a direction yet."
     delta >= TREND_NOTICEABLE ->
-        "Improving — the last few sessions beat the ones before by " +
-            "${percent(delta)} points."
-    delta <= -TREND_NOTICEABLE -> "Slipping — the last few sessions are ${percent(-delta)} points " +
-        "behind the ones before."
-    else -> "Holding steady across the sessions stored."
+        "Improving — the newer half of these bars beat the older half by ${percent(delta)} points."
+    delta <= -TREND_NOTICEABLE ->
+        "Slipping — the newer half of these bars is ${percent(-delta)} points behind the older half."
+    else -> "Holding steady across the bars shown."
 }
 
 private fun atLeastOne(remaining: Long, unit: Long): Long = maxOf(1L, remaining / unit)

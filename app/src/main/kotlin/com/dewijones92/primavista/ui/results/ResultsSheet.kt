@@ -35,23 +35,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dewijones92.primavista.practice.SessionResult
 import com.dewijones92.primavista.practice.SkillOutcome
+import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.theme.LocalNotationColors
 import com.dewijones92.primavista.theme.TabularNumeral
 import com.dewijones92.primavista.ui.progress.StrengthMeter
 import com.dewijones92.primavista.ui.progress.describe
 import com.dewijones92.primavista.ui.progress.meterTint
-import kotlin.math.roundToInt
+import com.dewijones92.primavista.ui.progress.percent
 
 /**
  * What just happened, and — the part that makes it a trainer — *which reading skills* let you down.
  *
- * A single accuracy percentage is the easy thing to show and the least useful: "68%" gives Dewi
- * nothing to practise. "Bass clef below the staff: 3 of 9" tells him exactly what to do next, and
- * is only possible because verdicts are stored per note with their skills attached rather than
- * summarised (docs/spec.md I5).
+ * A single percentage is the easy thing to show and the least useful: "68%" gives Dewi nothing to
+ * practise. "Bass clef below the staff: 3 of 9" tells him exactly what to do next, and is only
+ * possible because verdicts are stored per note with their skills attached rather than summarised
+ * (docs/spec.md I5).
  *
- * The percentage counts up and the bars fill, but only a genuinely clean run gets a flourish, and
- * the verdict itself is legible from the first frame. See `.claude/CODE-NOTES.md`.
+ * The number, the headline, the tint and the meter are one quantity — [SessionResult.cleanliness] —
+ * and accuracy is stated beside it rather than hidden. See `.claude/CODE-NOTES.md`.
  */
 @Composable
 public fun ResultsSheet(
@@ -60,6 +61,7 @@ public fun ResultsSheet(
     onAgain: () -> Unit,
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
+    input: Polyphony = Polyphony.Poly,
 ) {
     val tone = remember(result) { toneOf(result) }
     val weakest = remember(result) {
@@ -71,14 +73,14 @@ public fun ResultsSheet(
         Spacer(Modifier.height(SECTION_GAP))
         WhatHeldYouUp(weakest)
         Spacer(Modifier.height(SECTION_GAP))
-        Actions(weakest.firstOrNull(), onPractiseWeakest, onAgain, onDone)
+        Actions(drillTarget(result, input), onPractiseWeakest, onAgain, onDone)
     }
 }
 
 @Composable
 private fun Verdict(result: SessionResult, tone: ResultTone) {
     val notation = LocalNotationColors.current
-    val tint = meterTint(result.cleanliness, GOOD_THRESHOLD, MIDDLING_THRESHOLD)
+    val tint = toneTint(tone)
     Text(
         text = tone.headline,
         style = MaterialTheme.typography.titleMedium,
@@ -89,28 +91,30 @@ private fun Verdict(result: SessionResult, tone: ResultTone) {
     Box(contentAlignment = Alignment.CenterStart) {
         if (tone.celebrates) Bloom(notation.correct)
         Row(verticalAlignment = Alignment.Bottom) {
-            CountingPercent(result.accuracy, tint)
+            if (tone == ResultTone.Nothing) NoPercent(tint) else CountingPercent(result.cleanliness, tint)
             Spacer(Modifier.width(GAP))
-            Column(Modifier.padding(bottom = BASELINE_LIFT)) {
-                Text(
-                    text = "${result.correct} of ${result.notesExpected} notes",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = supportOf(result, tone),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = headlineBasis(result),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = BASELINE_LIFT),
+            )
         }
     }
+    Spacer(Modifier.height(TIGHT_GAP))
+    Text(
+        text = supportOf(result, tone),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     extrasNote(result)?.let {
         Spacer(Modifier.height(TIGHT_GAP))
         Text(text = it, style = MaterialTheme.typography.labelMedium, color = notation.wrongPitch)
     }
-    Spacer(Modifier.height(GAP))
-    StrengthMeter(result.cleanliness, tint, Modifier.fillMaxWidth())
+    if (tone != ResultTone.Nothing) {
+        Spacer(Modifier.height(GAP))
+        StrengthMeter(result.cleanliness, tint, Modifier.fillMaxWidth())
+    }
 }
 
 /**
@@ -118,16 +122,34 @@ private fun Verdict(result: SessionResult, tone: ResultTone) {
  * an animation that delays a verdict is an animation that hides it.
  */
 @Composable
-private fun CountingPercent(accuracy: Double, tint: Color) {
-    val target = (accuracy * PERCENT_SCALE).roundToInt()
+private fun CountingPercent(cleanliness: Double, tint: Color) {
+    val target = percent(cleanliness)
     var start by remember { mutableIntStateOf(0) }
     LaunchedEffect(target) { start = target }
     val shown by animateIntAsState(
         targetValue = start,
         animationSpec = tween(COUNT_MILLIS, easing = FastOutSlowInEasing),
-        label = "accuracy",
+        label = "cleanliness",
     )
     Text(text = "$shown%", style = MaterialTheme.typography.displayMedium, color = tint)
+}
+
+/** A session with nothing to judge scored nothing; a big 0% would say he got everything wrong. */
+@Composable
+private fun NoPercent(tint: Color) {
+    Text(text = "—", style = MaterialTheme.typography.displayMedium, color = tint)
+}
+
+/** One decision colours the headline, the number and the meter. See `.claude/CODE-NOTES.md`. */
+@Composable
+private fun toneTint(tone: ResultTone): Color {
+    val notation = LocalNotationColors.current
+    return when (tone) {
+        ResultTone.Excellent, ResultTone.Good -> notation.correct
+        ResultTone.Mixed -> notation.offTime
+        ResultTone.Rough -> notation.wrongPitch
+        ResultTone.Nothing -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
 }
 
 /** One soft bloom, once, behind the number. Reserved for [ResultTone.Excellent]. */
@@ -154,17 +176,25 @@ private fun Bloom(tint: Color) {
 private fun WhatHeldYouUp(weakest: List<SkillOutcome>) {
     if (weakest.isEmpty()) {
         Text(
-            text = "No reading skill was exercised enough to grade, so there is nothing to drill.",
+            text = "No reading skill was exercised, so there is nothing to drill.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         return
     }
+    val heldUp = weakest.any { it.accuracy < 1.0 }
     Text(
-        text = "What held you up",
+        text = if (heldUp) "What held you up" else "Nothing held you up",
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
     )
+    if (!heldUp) {
+        Text(
+            text = "Every reading skill this piece exercised came out clean.",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     Spacer(Modifier.height(GAP))
     Column(verticalArrangement = Arrangement.spacedBy(GAP)) {
         weakest.forEachIndexed { index, outcome -> SkillRow(outcome, index) }
@@ -182,7 +212,7 @@ private fun SkillRow(outcome: SkillOutcome, index: Int) {
         Spacer(Modifier.width(GAP))
         StrengthMeter(
             value = outcome.accuracy,
-            tint = meterTint(outcome.accuracy, GOOD_THRESHOLD, MIDDLING_THRESHOLD),
+            tint = meterTint(outcome.accuracy, GOOD_AT, MIXED_AT),
             modifier = Modifier.width(METER_WIDTH),
             delayMillis = index * ROW_STAGGER,
         )
@@ -197,17 +227,17 @@ private fun SkillRow(outcome: SkillOutcome, index: Int) {
 
 @Composable
 private fun Actions(
-    weakest: SkillOutcome?,
+    target: SkillOutcome?,
     onPractiseWeakest: () -> Unit,
     onAgain: () -> Unit,
     onDone: () -> Unit,
 ) {
     Button(
         onClick = onPractiseWeakest,
-        enabled = weakest != null,
+        enabled = target != null,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(weakest?.let { "Drill ${describe(it.tag).lowercase()}" } ?: "Nothing to drill")
+        Text(target?.let { "Drill ${describe(it.tag).lowercase()}" } ?: "Nothing to drill")
     }
     Row(
         Modifier.fillMaxWidth(),
@@ -218,10 +248,7 @@ private fun Actions(
     }
 }
 
-private const val PERCENT_SCALE = 100
 private const val WEAKEST_SHOWN = 6
-private const val GOOD_THRESHOLD = 0.85
-private const val MIDDLING_THRESHOLD = 0.6
 private const val COUNT_MILLIS = 800
 private const val BLOOM_MILLIS = 1400
 private const val BLOOM_ALPHA = 0.45f

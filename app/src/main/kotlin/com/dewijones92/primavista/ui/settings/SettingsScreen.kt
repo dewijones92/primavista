@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.dewijones92.primavista.database.PracticeSettings
 import com.dewijones92.primavista.database.RouteLatency
 import com.dewijones92.primavista.database.StoredReading
+import com.dewijones92.primavista.di.InputMode
 import com.dewijones92.primavista.theme.LocalNotationColors
 
 /** [atLeast] is capped by the probe limit, so [capped] is what stops "200" reading as "exactly 200". */
@@ -50,7 +51,7 @@ private fun countText(count: SessionCount): String = when {
 }
 
 /**
- * The preferences the app stores, and the honest state of each.
+ * The preferences a session reads when it starts, and the honest state of each.
  *
  * The audio-latency panel is the reason this screen exists at all: a mic verdict's millisecond
  * figure is only as good as the latency correction behind it, and presenting an assumed number as a
@@ -62,7 +63,6 @@ internal fun SettingsScreen(
     settings: PracticeSettings,
     latencies: StoredReading<List<RouteLatency>>?,
     storedSessions: StoredReading<SessionCount>?,
-    appliedYet: Boolean,
     onSettings: (PracticeSettings) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -82,7 +82,7 @@ internal fun SettingsScreen(
         )
         Spacer(Modifier.height(SECTION_GAP))
 
-        SessionSection(settings, appliedYet, onSettings)
+        SessionSection(settings, onSettings)
         Spacer(Modifier.height(SECTION_GAP))
         InputSection(settings, onSettings)
         Spacer(Modifier.height(SECTION_GAP))
@@ -94,17 +94,14 @@ internal fun SettingsScreen(
 }
 
 @Composable
-private fun SessionSection(
-    settings: PracticeSettings,
-    appliedYet: Boolean,
-    onSettings: (PracticeSettings) -> Unit,
-) {
-    SettingSection("Session", "How a practice run is set up.") {
+private fun SessionSection(settings: PracticeSettings, onSettings: (PracticeSettings) -> Unit) {
+    SettingSection("Session", "How the next practice run starts.") {
         TempoDial(settings.tempoBpm) { onSettings(settings.copy(tempoBpm = it)) }
         Spacer(Modifier.height(ROW_GAP))
         SwitchRow(
             title = "Metronome",
-            detail = "A click on every beat, accented on the downbeat.",
+            detail = "A click on every beat, accented on the downbeat. PLAY IT mutes it for the run, " +
+                "because the microphone would hear it and score it as a note.",
             checked = settings.metronomeOn,
         ) { onSettings(settings.copy(metronomeOn = it)) }
         SwitchRow(
@@ -112,14 +109,6 @@ private fun SessionSection(
             detail = "Play the piece through once before you are asked to read it.",
             checked = settings.listenFirstOn,
         ) { onSettings(settings.copy(listenFirstOn = it)) }
-        if (!appliedYet) {
-            Spacer(Modifier.height(ROW_GAP))
-            Caveat(
-                "Saved and restored here, but a session does not read them yet — it uses each " +
-                    "piece's own tempo, and the metronome and input are chosen on the practice " +
-                    "screen itself.",
-            )
-        }
     }
 }
 
@@ -127,16 +116,23 @@ private fun SessionSection(
 private fun InputSection(settings: PracticeSettings, onSettings: (PracticeSettings) -> Unit) {
     SettingSection("Input", "What the app listens to.") {
         SegmentedChoice(
-            options = InputChoice.entries.map { it.label to it.title },
+            options = InputChoice.entries.map { it.mode.label to it.title },
             selected = settings.inputLabel,
         ) { onSettings(settings.copy(inputLabel = it)) }
         Spacer(Modifier.height(ROW_GAP))
-        val chosen = InputChoice.entries.firstOrNull { it.label == settings.inputLabel }
+        val chosen = InputChoice.entries.firstOrNull { it.mode.label == settings.inputLabel }
         Text(
             text = chosen?.detail ?: "Nothing chosen yet, so a session opens on the on-screen keyboard.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (chosen?.mode == InputMode.Mic) {
+            Spacer(Modifier.height(ROW_GAP))
+            Caveat(
+                "PLAY IT needs the microphone permission. If it has been turned off since, a session " +
+                    "opens on the on-screen keyboard and says so rather than listening to nothing.",
+            )
+        }
     }
 }
 
@@ -214,15 +210,16 @@ internal fun Caveat(text: String) {
     }
 }
 
-internal enum class InputChoice(val label: String, val title: String, val detail: String) {
+/** The stored label comes from [InputMode] rather than being spelled again here. */
+internal enum class InputChoice(val mode: InputMode, val title: String, val detail: String) {
     Tap(
-        label = "tap",
+        mode = InputMode.Tap,
         title = "Tap",
         detail = "The on-screen keyboard. Both hands at once, and the touch is timestamped by the " +
             "input system, so its timing needs no correction.",
     ),
     Mic(
-        label = "mic",
+        mode = InputMode.Mic,
         title = "Play it",
         detail = "The microphone, following one line at a time. Two-hand material is refused with " +
             "the bar that needs both hands, rather than half-heard and mis-scored.",
