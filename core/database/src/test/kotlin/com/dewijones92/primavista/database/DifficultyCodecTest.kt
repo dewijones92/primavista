@@ -12,12 +12,41 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+private const val FOUR_ACCIDENTALS = 4
+private const val THREE_SHARPS = 3
+
 class DifficultyCodecTest {
     @Test
     fun aFullSpecRoundTrips() {
         val spec = sampleSpec()
 
         assertEquals(spec, DifficultyCodec.decode(DifficultyCodec.encode(spec)))
+    }
+
+    @Test
+    fun theReadingCeilingRoundTrips() {
+        val spec = sampleSpec().copy(key = KeySignature(1), maxKeyAccidentals = FOUR_ACCIDENTALS)
+
+        assertEquals(spec, DifficultyCodec.decode(DifficultyCodec.encode(spec)))
+    }
+
+    /**
+     * Rows written before the reading ceiling was split from the writing key have no such field.
+     * Defaulting it to the key's own size is exactly what those rows meant, so an old session stays
+     * replayable from a report rather than becoming an unreadable origin.
+     */
+    @Test
+    fun aSpecStoredBeforeTheReadingCeilingExistedStillDecodes() {
+        val spec = sampleSpec().copy(key = KeySignature(THREE_SHARPS))
+        val withoutTheField = DifficultyCodec.encode(spec)
+            .split(";")
+            .filterNot { it.startsWith("maxKey=") }
+            .joinToString(";")
+
+        val decoded = DifficultyCodec.decode(withoutTheField)
+
+        assertEquals(spec, decoded)
+        assertEquals(THREE_SHARPS, decoded?.maxKeyAccidentals)
     }
 
     @Test

@@ -24,8 +24,9 @@ package com.dewijones92.primavista.score
  *   rung whose spec happens to say 4/4 rejected 50,712 of the corpus's 8,798 passages on a
  *   difficulty this ladder never claimed to teach. If metre becomes a taught skill, it gets a tag
  *   first and a check second.
- * - The exact key. A spec names one key; a rung *reads* signatures up to a size, so the check is on
- *   how many accidentals the signature carries, not on which ones.
+ * - The exact key. A spec names one key because a generator must write in something; what a rung can
+ *   *read* is [DifficultySpec.maxKeyAccidentals], a separate dial, and the check is on how many
+ *   accidentals a signature carries rather than on which ones.
  * - [DifficultySpec.maxLeapSemitones]. This one is the least obvious and cost the most to settle.
  *   It is a *writing* dial — "keep the generated line stepwise so it reads easily" — and reading it
  *   as a ceiling on what a reader can cope with double-counts a difficulty the range check already
@@ -69,7 +70,7 @@ private fun DifficultySpec.furnitureReasons(score: Score): Sequence<String> = se
         yield("both hands play, and this level is hands-separate")
     }
     score.measures.forEach { measure ->
-        if (measure.key.accidentalCount > key.accidentalCount) {
+        if (measure.key.accidentalCount > readableKeyAccidentals) {
             yield("a signature of ${measure.key.accidentalCount} accidentals at bar ${measure.number}")
         }
         measure.clefs.forEach { (staff, clef) ->

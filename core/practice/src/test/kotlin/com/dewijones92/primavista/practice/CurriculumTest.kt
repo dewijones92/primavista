@@ -1,6 +1,7 @@
 package com.dewijones92.primavista.practice
 
 import com.dewijones92.primavista.score.DerivedScoreSkills
+import com.dewijones92.primavista.score.KeySignature
 import com.dewijones92.primavista.score.NoteSymbol
 import com.dewijones92.primavista.score.PitchBand
 import com.dewijones92.primavista.score.SeededExerciseGenerator
@@ -104,6 +105,25 @@ class CurriculumTest {
         assertTrue(curriculum.stages.take(3).flatMap { it.skills }.all { it in throughThree })
         assertFalse(SkillTag.HandIndependence in throughThree)
         assertTrue(SkillTag.HandIndependence in curriculum.skillsThrough(StageId(4)))
+    }
+
+    /**
+     * The path used to cap at one sharp for all ten rungs, so a reader could finish it having never
+     * met a B flat — and 44,335 passages of the shipped corpus were refused on a difficulty stage
+     * six claims to teach. What a rung writes in and what it can read are different questions.
+     */
+    @Test
+    fun `the rungs read wider keys than they write in, and the ceiling only ever rises`() {
+        val ceilings = curriculum.stages.map { it.spec.readableKeyAccidentals }
+
+        assertEquals(ceilings.sorted(), ceilings)
+        assertEquals(0, curriculum.stages.first().spec.readableKeyAccidentals)
+        assertTrue(
+            "the last rung stops at ${ceilings.last()} accidentals, so some real keys are unreadable",
+            ceilings.last() >= KeySignature.MAX_FIFTHS,
+        )
+        val keys = curriculum.stages.first { it.title == "Keys" }
+        assertTrue("Keys reads only ${keys.spec.readableKeyAccidentals}", keys.spec.readableKeyAccidentals > 1)
     }
 
     @Test

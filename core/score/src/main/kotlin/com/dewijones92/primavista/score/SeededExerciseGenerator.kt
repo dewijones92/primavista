@@ -47,7 +47,10 @@ public class SeededExerciseGenerator(private val diag: Diag = NoOpDiag) : Exerci
             is SkillTag.ClefRegion -> base.withClefRegion(target.clef, target.band)
             is SkillTag.LegerLines -> base.withLegerLines(target.clef, target.count, target.above)
             is SkillTag.Accidental -> base.withAccidental(target.alter)
-            is SkillTag.KeyReading -> base.copy(key = KeySignature(target.fifths))
+            is SkillTag.KeyReading -> base.copy(
+                key = KeySignature(target.fifths),
+                maxKeyAccidentals = maxOf(base.maxKeyAccidentals, kotlin.math.abs(target.fifths)),
+            )
             is SkillTag.RhythmFigure -> base.withRhythmFigure(target)
             is SkillTag.Leap -> base.withLeap(target.semitones)
             SkillTag.HandIndependence -> base.withBothHands()

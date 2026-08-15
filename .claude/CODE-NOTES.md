@@ -2766,3 +2766,32 @@ Agents implementing a module append their own `##` section and never rewrite ano
   right, ending at 1388, are 3.5-staff-space down-stems on low bass notes, which is correct
   engraving. The `StaffPngRenderer` output of the same piece confirms it at a glance. Measure the
   image; do not read it.
+
+## core/score/.../Exercise.kt — `key` versus `maxKeyAccidentals`
+
+- **The path capped at one sharp for all ten rungs, and nobody noticed because one field was doing
+  two jobs.** `DifficultySpec.key` says what to *write* in — a generator must pick something — and
+  admission was reading it as what a level can *read*. Stage six is called "Keys"; it set
+  `key = KeySignature(1)` and no later rung touched it, so a reader could finish the entire path
+  having never met a B flat, and `docs/journey.md`'s stage nine ("the corpus, at tempo") could not
+  happen. Measured on the corpus, that single conflation produced **44,335 refusals** and left
+  **236** pieces placeable out of 1,353. Splitting the dial took it to **805 pieces**, from 71
+  composers to over 100, and 735 placeable passages to 3,410.
+
+- **The floor is derived, not required, because `copy` does not re-evaluate defaults.** The first
+  version had `require(maxKeyAccidentals >= key.accidentalCount)` in `init`. Every existing
+  `spec.copy(key = …)` in the codebase and the tests keeps the *old* ceiling, so the precondition
+  turned ordinary copies into crashes — four tests failed instantly. `readableKeyAccidentals` is
+  `maxOf(maxKeyAccidentals, key.accidentalCount)` instead: the illegal state cannot be represented
+  rather than being caught at runtime, which is rung 1 of CLAUDE.md's ladder instead of rung 4.
+
+- **A stage may only CLAIM the keys its own material writes.** `CurriculumTest` asserts that every
+  skill a stage claims is one its base spec actually generates, which is why stage six claims only
+  `KeyReading(1)` even though it now reads two accidentals. That is the right invariant and it is
+  also the tell that the model is one dial short — a stage that teaches keys ought to write in more
+  than one. Recorded as `docs/todos/generate-in-more-than-one-key.md` rather than bodged by
+  loosening the test.
+
+- **The codec change is additive on purpose.** `maxKey` is written but read with a default of the
+  key's own size, so `VERSION` stays at 1 and a session stored before the split is still replayable
+  from a report — the default is exactly what those rows meant.

@@ -21,7 +21,28 @@ public data class DifficultySpec(
     val tempoBpm: Int,
     /** When false, the lower staff rests throughout — hands-separate practice. */
     val bothHandsActive: Boolean,
+    /**
+     * How large a key signature a reader at this level copes with, which is **not** the same
+     * question as [key].
+     *
+     * [key] says what to *write* in — a generator has to pick one. This says what can be *read*,
+     * and real music is in every key. Conflating them capped the whole ten-stage path at one sharp,
+     * so a reader could finish it having never seen a B flat, and left 44,335 passages of the
+     * shipped corpus refused on a difficulty the path claims to teach at stage six.
+     *
+     * Defaults to [key]'s own size, which is exactly the behaviour before the split.
+     */
+    val maxKeyAccidentals: Int = key.accidentalCount,
 ) {
+    /**
+     * What a reader at this level copes with, which is never less than what it writes.
+     *
+     * Derived rather than required, because `copy(key = …)` does not re-evaluate defaults: a
+     * precondition here would turn every existing `copy` that changes the key into a crash, which
+     * is exactly what happened when it was one.
+     */
+    public val readableKeyAccidentals: Int get() = maxOf(maxKeyAccidentals, key.accidentalCount)
+
     init {
         require(bars > 0) { "an exercise needs at least one bar" }
         require(symbols.isNotEmpty()) { "an exercise needs at least one note value" }

@@ -8,10 +8,11 @@ updated: 2026-08-15
 
 # Repertoire
 
-Twenty-five nineteenth-century songs ship with the app, alongside the three hand-authored
-openings. Schubert's *Gretchen am Spinnrade*, Satie's *Socrate*, Haydn, Mendelssohn, Bizet,
-Fauré, Schumann, Amy Beach, Chiquinha Gonzaga, Marie Jaëll, Josephine Lang, Augusta Holmès,
-Pauline Viardot, Clémence de Grandval. All CC0, from the
+Forty-one nineteenth-century songs ship with the app, alongside the three hand-authored
+openings. Schubert (*Gretchen am Spinnrade*, and *Gute Nacht* and *Der Leiermann* from *Winterreise*),
+Berlioz's *Villanelle*, Brahms, Verdi, Fauré, Gounod, Chausson, Mendelssohn, Bizet, Chaminade,
+Coleridge-Taylor, Maria Theresia von Paradis, Pauline Viardot, Louise Reichardt, Marie Jaëll,
+Josephine Lang, Augusta Holmès, Clémence de Grandval, Loïsa Puget. All CC0, from the
 [OpenScore Lieder Corpus](https://github.com/OpenScore/Lieder) at commit `6b2dc542`.
 
 This is the app's stated purpose made real: *read real pieces, in time*.
@@ -33,7 +34,7 @@ app parses is the file that was screened. Selection is written to
 `corpus/lieder/manifest.tsv`; the three hand-authored pieces live in `corpus/manifest.tsv`.
 An import is a data change and touches no Kotlin.
 
-## Four things this needed, each found by measuring
+## Five things this needed, each found by measuring
 
 | Problem | Answer | Evidence |
 |---|---|---|
@@ -41,6 +42,7 @@ An import is a data change and touches no Kotlin.
 | Screening on "was anything dropped" rejects nearly everything | `DropKind` — the question is whether a drop leaves a **hole in the music** | The parser advances its cursor by the file's own duration even for notes it refuses, so no drop shifts the timeline. Reclassifying grace notes, cue notes, noteheads and plain repeats took the corpus from **41% to 93%** usable |
 | A whole song cannot be graded — it contains every skill somewhere | `Score.excerpt` / `Score.passages` | **8,744 of 8,798** passages were unplaceable when graded whole. Windowed, they place across stages 5–10. Window length is itself difficulty: **735** passages placed at 4 bars, **140** at 8, **17** at 16 |
 | Grading by the skills a stage *declares* cannot work | `DifficultySpec.admits` | A stage's skill set is a teaching claim, not an enumeration — no stage lists `Leap(5)`, so the subset test rejects every bar of real music |
+| The path capped at **one sharp**, for all ten rungs | `DifficultySpec.maxKeyAccidentals` — what a level *reads*, separate from the `key` it *writes* in | 44,335 refusals on a difficulty stage six claims to teach. Splitting them took the corpus from **236 placeable pieces to 805**, and from 71 composers to over 100 |
 
 ## What the reader sees
 
@@ -66,19 +68,20 @@ An import is a data change and touches no Kotlin.
 
 ## Held by
 
-- `PartChoiceTest` (9), `ExcerptTest` (11), `AdmissionTest` (9), `CorpusTest` (11),
-  `RepertoireTest` (10).
+- `PartChoiceTest` (9), `ExcerptTest` (11), `AdmissionTest` (11), `CorpusTest` (11),
+  `RepertoireTest` (10), plus the curriculum's own "the ceiling only ever rises".
 - The property that ties the generator to the grader: *every exercise a spec generates is
   admitted by that spec*. It caught the accidental check reading the note instead of the key.
 - *A drill aimed at anything the shipped repertoire can teach still fills its bars* — the
   scheduler will be handed whatever real music made weak, so every skill the corpus can
   produce must yield a spec that writes complete bars.
-- `StaffRenderProofTest` renders all 28 pieces to PNG on the JVM and asserts none is blank.
+- `StaffRenderProofTest` renders all 44 pieces to PNG on the JVM and asserts none is blank.
 
 ## Known limits
 
 - Nothing places below **rung 5**. Real piano writing is not beginner material; the generator
   covers the lower rungs, which is what it is for.
-- The curriculum tops out at **one sharp**, so most of the corpus grades past the last rung.
-  That is a fact about the path, not the music — see `../todos/`.
+- A stage still **writes in one key** even though it can now read several, so flats are met
+  through repertoire and targeted drills rather than through a stage's own material. See
+  `../todos/generate-in-more-than-one-key.md`.
 - Parsing the corpus costs real time on first use. See `../todos/repertoire-load-cost.md`.

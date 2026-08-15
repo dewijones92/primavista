@@ -5,6 +5,7 @@ import com.dewijones92.primavista.score.DifficultySpec
 import com.dewijones92.primavista.score.KeySignature
 import com.dewijones92.primavista.score.Staff
 import com.dewijones92.primavista.score.TimeSignature
+import kotlin.math.abs
 
 /** What a stored [DifficultySpec] turned out to be. See `.claude/CODE-NOTES.md`. */
 public sealed interface SpecReading {
@@ -58,6 +59,7 @@ public object DifficultyCodec {
     private const val MAX_LEAP = "maxLeap"
     private const val TEMPO = "tempo"
     private const val BOTH_HANDS = "bothHands"
+    private const val MAX_KEY = "maxKey"
 
     public fun encode(spec: DifficultySpec): String = listOf(
         VERSION_FIELD to VERSION.toString(),
@@ -75,6 +77,7 @@ public object DifficultyCodec {
         MAX_LEAP to spec.maxLeapSemitones.toString(),
         TEMPO to spec.tempoBpm.toString(),
         BOTH_HANDS to spec.bothHandsActive.toString(),
+        MAX_KEY to spec.maxKeyAccidentals.toString(),
     ).joinToString(FIELD_SEPARATOR) { "${it.first}$NAME_SEPARATOR${it.second}" }
 
     /** Null when this build cannot rebuild the spec, so the row is kept and the loss is logged. */
@@ -111,6 +114,9 @@ public object DifficultyCodec {
             maxLeapSemitones = fields.int(MAX_LEAP),
             tempoBpm = fields.int(TEMPO),
             bothHandsActive = fields.bool(BOTH_HANDS),
+            // Absent in rows written before the reading ceiling was split from the writing key.
+            // Defaulting to the key's own size is exactly what those rows meant.
+            maxKeyAccidentals = fields[MAX_KEY]?.let { intOf(it) } ?: abs(fields.int(FIFTHS)),
         )
     }
 

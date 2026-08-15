@@ -45,13 +45,17 @@ schedulers and a design failure.
 | 3 | The other clef | Bass clef, same treatment |
 | 4 | Both hands | The grand staff — two staves at once |
 | 5 | Sharps and flats | Written accidentals |
-| 6 | Keys | Key signatures, where the accidental is implied rather than printed |
+| 6 | Keys | Key signatures, where the accidental is implied rather than printed. Writes in G; reads up to two accidentals |
 | 7 | Off the staff | Leger lines, above and below, both clefs |
 | 8 | Quicker | Eighths, sixteenths, dots, ties |
-| 9 | Real music | The corpus, at tempo |
-| 10+ | Onwards | Tuplets, wider leaps, faster tempi, more repertoire |
+| 9 | Real music | The corpus, at tempo — in the keys real music is written in, up to four accidentals |
+| 10+ | Onwards | Tuplets, wider leaps, faster tempi, every key, more repertoire |
 
-Each stage carries a `DifficultySpec` template and the `SkillTag`s it covers. A stage is **passed**
+Each stage carries a `DifficultySpec` template and the `SkillTag`s it covers. **What a rung writes
+in and what it can read are different dials** — `key` and `maxKeyAccidentals`. Conflating them
+capped the whole path at one sharp, so a reader could finish all ten rungs having never met a B
+flat, and 44,335 passages of the shipped corpus were refused on a difficulty stage six claims to
+teach. A stage is **passed**
 when its skills are solid — not when a counter of sessions ticks over, because sessions completed is
 a measure of showing up and this app measures reading.
 

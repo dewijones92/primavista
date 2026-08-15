@@ -20,7 +20,7 @@ that something works; if you find one that does not, the row is the bug.
 | Metronome, driven by the Conductor and not its own timer | shipped | `Conductor` | one clock, per spec I1 |
 | Reference tone playback | shipped | `TonePlayer` | JVM envelope/mixing tests |
 | MusicXML subset parsing, loud about what it dropped | shipped | `MusicXmlParser` | hardened DOM; `DropKind` separates a hole in the music from lost decoration, and both are shown |
-| Real repertoire: 25 CC0 songs, screened and placed by the app's own grader | shipped | `Corpus` + `Repertoire` | [`repertoire.md`](repertoire.md); 40 JVM tests across part selection, passages, admission, the corpus and what it offers |
+| Real repertoire: 41 CC0 songs, screened and placed by the app's own grader | shipped | `Corpus` + `Repertoire` | [`repertoire.md`](repertoire.md); 40 JVM tests across part selection, passages, admission, the corpus and what it offers |
 | A passage of a piece is a piece | shipped | `Score.passages` | a whole song grades as one difficulty; windowed, the same song places across five rungs. 11 JVM tests |
 | "Is this music at this level" | shipped | `DifficultySpec.admits` | the dual of the generator, tied to it by a property test that caught a real defect |
 | Procedurally generated graded exercises | shipped | `Score` (same type as a parsed piece) | determinism from seed+spec, so a report can replay one |

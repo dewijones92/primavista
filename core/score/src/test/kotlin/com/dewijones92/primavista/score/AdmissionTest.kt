@@ -9,6 +9,8 @@ private const val SEEDS = 40L
 private const val TWO_SHARPS = 2
 private const val THREE_FLATS = -3
 private const val THIRD_SEMITONES = 4
+private const val FOUR_ACCIDENTALS = 4
+private const val FIVE_ACCIDENTALS = 5
 
 class AdmissionTest {
 
@@ -66,6 +68,26 @@ class AdmissionTest {
         val inG = scoreOf(Pitch(Letter.F, Alter.Sharp, 5), Pitch(Letter.G, Alter.Natural, 5))
             .let { score -> score.copy(measures = score.measures.map { it.copy(key = KeySignature(1)) }) }
         assertTrue(naturalsOnly.admits(inG).isAdmitted)
+    }
+
+    /**
+     * The dial that stopped the whole ten-stage path capping at one sharp. [DifficultySpec.key] is
+     * what a level *writes* in; this is what it can *read*, and real music is in every key.
+     */
+    @Test
+    fun `a level reads up to its ceiling, not up to the key it writes in`() {
+        val writesInG = spec(key = KeySignature(1)).copy(maxKeyAccidentals = FOUR_ACCIDENTALS)
+        assertTrue(writesInG.admits(inKey(KeySignature(-FOUR_ACCIDENTALS))).isAdmitted)
+        assertFalse(writesInG.admits(inKey(KeySignature(FIVE_ACCIDENTALS))).isAdmitted)
+    }
+
+    /** `copy(key = …)` does not re-evaluate defaults, so the floor has to be derived, not required. */
+    @Test
+    fun `a level can always read the key it writes in, even after a copy`() {
+        val copied = spec(key = KeySignature.C).copy(key = KeySignature(FIVE_ACCIDENTALS))
+        assertEquals(0, copied.maxKeyAccidentals)
+        assertEquals(FIVE_ACCIDENTALS, copied.readableKeyAccidentals)
+        assertTrue(copied.admits(inKey(KeySignature(FIVE_ACCIDENTALS))).isAdmitted)
     }
 
     @Test

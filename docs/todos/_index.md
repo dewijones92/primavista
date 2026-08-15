@@ -17,6 +17,7 @@ never silently abandoned.
 | [midi-input](midi-input.md) | medium | input | The third `AnswerSource` adapter: exact, zero-ambiguity, and the only honest route to judging polyphony |
 | [diagnostics-report](diagnostics-report.md) | high | ui | Spec I7 is currently proven by nothing; a report has to be able to reconstruct a session's verdicts |
 | [repertoire-load-cost](repertoire-load-cost.md) | medium | score | Reading the corpus holds the emulator in GC for 12 seconds; unmeasured on the real phone |
+| [generate-in-more-than-one-key](generate-in-more-than-one-key.md) | medium | score | A stage called *Keys* writes every exercise in G major; it can now read four accidentals but never writes one |
 | [open-any-score](open-any-score.md) | medium | ui | The pipeline already parses, grades and windows any MusicXML — all that is missing is the file picker |
 
 

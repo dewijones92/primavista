@@ -26,6 +26,10 @@ private const val FIFTH_SEMITONES = 7
 private const val OCTAVE_SEMITONES = 12
 private const val TRIPLET = 3
 
+/** How large a key signature each rung can READ, which is not the key it writes in. */
+private const val TWO_ACCIDENTALS = 2
+private const val FOUR_ACCIDENTALS = 4
+
 private val trebleStaff = staffMidiRange(Clef.Treble, KeySignature.C, WHOLE_STAFF_STEPS)
 private val bassStaff = staffMidiRange(Clef.Bass, KeySignature.C, WHOLE_STAFF_STEPS)
 private val trebleOffStaff = staffMidiRange(Clef.Treble, KeySignature.C, ONE_LEGER_LINE_STEPS)
@@ -125,9 +129,17 @@ private val drafts = listOf(
     ),
     StageDraft(
         title = "Keys",
-        blurb = "One sharp at the front of the line, implied on every F you meet.",
+        blurb = "Sharps and flats at the front of the line, implied on every note they name.",
+        // Only the key it writes in is *claimed*: a stage's claims are what its own material
+        // tests, and `maxKeyAccidentals` is a separate dial saying what it can READ.
         skills = setOf(SkillTag.KeyReading(fifths = 1)),
-        evolve = { it.copy(key = KeySignature(fifths = 1), tempoBpm = KEYS_TEMPO_BPM) },
+        evolve = {
+            it.copy(
+                key = KeySignature(fifths = 1),
+                maxKeyAccidentals = TWO_ACCIDENTALS,
+                tempoBpm = KEYS_TEMPO_BPM,
+            )
+        },
     ),
     StageDraft(
         title = "Off the staff",
@@ -164,11 +176,12 @@ private val drafts = listOf(
     ),
     StageDraft(
         title = "Real music",
-        blurb = "Longer lines at a real tempo, with the leaps real music makes.",
+        blurb = "Longer lines at a real tempo, in the keys real music is actually written in.",
         skills = setOf(SkillTag.Leap(FIFTH_SEMITONES)),
         evolve = {
             it.copy(
                 bars = PIECE_LENGTH_BARS,
+                maxKeyAccidentals = FOUR_ACCIDENTALS,
                 maxLeapSemitones = FIFTH_SEMITONES,
                 tempoBpm = REAL_MUSIC_TEMPO_BPM,
             )
@@ -176,7 +189,7 @@ private val drafts = listOf(
     ),
     StageDraft(
         title = "Onwards",
-        blurb = "Triplets, wider leaps, faster tempi. There is no top to this one.",
+        blurb = "Every key, triplets, wider leaps, faster tempi. There is no top to this one.",
         skills = setOf(
             SkillTag.Leap(OCTAVE_SEMITONES),
             SkillTag.RhythmFigure(NoteSymbol.Quarter, dots = 0, tupletNumerator = TRIPLET),
@@ -184,6 +197,7 @@ private val drafts = listOf(
         evolve = {
             it.copy(
                 allowTuplets = true,
+                maxKeyAccidentals = KeySignature.MAX_FIFTHS,
                 maxLeapSemitones = OCTAVE_SEMITONES,
                 tempoBpm = ONWARDS_TEMPO_BPM,
             )
