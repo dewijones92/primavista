@@ -1,7 +1,7 @@
 ---
 title: Testing strategy and coverage map
 kind: index
-updated: 2026-08-08
+updated: 2026-08-15
 ---
 
 # Tests
@@ -33,15 +33,15 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 
 | Module | JVM tests | Instrumented | Holds |
 |---|---|---|---|
-| `:core:score` | 97 | — | the model, the MusicXML subset, the generator's determinism, and `Score.polyphony` (spec I3's predicate) |
-| `:core:audio` | 85 | 3 classes | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM; the AudioTrack and AudioRecord bridges on a device |
+| `:core:score` | 104 | — | the model, the MusicXML subset, the generator's determinism, and `Score.polyphony` (spec I3's predicate) |
+| `:core:audio` | 88 | 22 | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM; the AudioTrack and AudioRecord bridges on a device |
 | `:core:notation` | 79 | — | staff geometry for both clefs, stems from font anchors, beams, leger lines, `xOf` agreeing with note placement (spec I1) |
-| `:core:practice` | 60 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler (spec I1, I2, I3, I5) |
+| `:core:practice` | 105 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum and the placement read (spec I1, I2, I3, I5) |
 | `:lib:pitch` | 60 | — | YIN against synthesised tones, onset separation of repeated notes, vibrato held as one note |
-| `:core:database` | — | 39 | session and skill round-trips, the real v1→v2 migration, cascade delete (spec I4) |
+| `:core:database` | — | 74 | session and skill round-trips, the real v1→v2 migration, cascade delete (spec I4) |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
-| `:app` | 24 | — | the JVM PNG render of the corpus, and screen logic that does not need a device |
-| **Total** | **417** | **39** | |
+| `:app` | 85 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, and screen logic that does not need a device |
+| **Total** | **533** | **96** | |
 
 ## Deliberately uncovered (and why)
 
