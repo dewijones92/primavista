@@ -36,12 +36,12 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 | `:core:score` | 139 | — | the model, the MusicXML subset, the generator's determinism, `Score.polyphony` (spec I3's predicate), part selection, passages, and whether a spec admits a piece |
 | `:core:audio` | 88 | 22 | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM; the AudioTrack and AudioRecord bridges on a device |
 | `:core:notation` | 79 | — | staff geometry for both clefs, stems from font anchors, beams, leger lines, `xOf` agreeing with note placement (spec I1) |
-| `:core:practice` | 125 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5), what a piece offers to read and how far ahead the page is covered |
+| `:core:practice` | 135 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5), what a piece offers to read, how far ahead the page is covered, and re-judging a session from its own report (spec I7) |
 | `:lib:pitch` | 60 | — | YIN against synthesised tones, onset separation of repeated notes, vibrato held as one note |
 | `:core:database` | 67 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
-| `:app` | 85 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, and screen logic that does not need a device |
-| **Total** | **655** | **99** | |
+| `:app` | 88 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, and screen logic that does not need a device |
+| **Total** | **668** | **99** | |
 
 ## Deliberately uncovered (and why)
 
@@ -56,8 +56,9 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
   building, installing and looking — which is how the last four real bugs were found, all of them
   invisible to the suite. That is a stated limitation, not a claim that looking is equivalent: it
   catches what is on screen and nothing about what happens when nobody is watching.
-- **Spec I7.** The buffer's mechanics are covered; that a report can reconstruct a session's verdicts
-  is not. See `../todos/diagnostics-report.md`.
+- **The layout is not replayed.** `SessionReplay` re-judges a session exactly (spec I7), but it
+  rebuilds the music and the clock, not the engraving — so a claim about I1's scroll geometry is
+  still read out of a report rather than recomputed from it.
 - **How long the corpus takes to read on a real phone.** Measured on the emulator through the GC log
   (see `../todos/repertoire-load-cost.md`); no test can measure the phone, and the emulator is a poor
   proxy for it.

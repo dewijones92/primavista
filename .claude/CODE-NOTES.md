@@ -2817,3 +2817,37 @@ Agents implementing a module append their own `##` section and never rewrite ano
   every future preference adding another. One sealed type, one `change(…)`, and `remembering(…)`
   lifted out as a free function saying what is persisted — Echo deliberately is not, because the
   session mutes it for the mic and a stored value would fight that.
+
+## core/practice/.../SessionReplay.kt — what makes spec I7 a property
+
+- **The replay records INPUTS, never the outcome.** A report that carried the verdicts alone could
+  be read but never checked; one that carries the music, the clock and every note heard can be
+  *re-judged*. `claimed` travels alongside precisely so a replay can be compared against what the
+  app said — and `SessionReplayTest` includes a test that forces the claim wrong and asserts the
+  replay disagrees, because a comparison that cannot fail proves nothing.
+
+- **`ClaimedVerdict` is kind + dt, not the whole `Verdict`.** The rest of a verdict is derivable
+  from the note it answers to; the `dt` is not, and the same verdict reached at a materially
+  different `dt` is a timing drift worth catching. Derived in one place (`ClaimedVerdict.of`) so the
+  encoder and the comparison cannot disagree about what "the same verdict" means. A `Verdict.Extra`
+  encodes as index `-1` — the sentinel the *judge* refuses to hold in memory is fine as a wire
+  value, because nothing indexes an array with it.
+
+- **`InputLatency` travels whole.** The first cut carried `latencyMillis: Int`, which lost both the
+  fraction and the provenance. An assumed 60ms and a measured 60ms apply the same correction and
+  justify completely different confidence in the verdict built on them, and the spec asks for
+  "which of the two it was".
+
+- **`SpecText` is a port, and that is not ceremony.** `:core:practice` cannot see `:core:database`,
+  where `DifficultyCodec` already encodes a difficulty spec and already makes stored sessions
+  replayable. Re-encoding it here would be a second encoding of one thing — the duplication this
+  repo has been bitten by twice — so the app, which sees both, hands the existing one across.
+
+- **A pause is part of the clock, so the legs travel.** `Conductor.pauseLegs()` exists only for
+  this. A replay that lost them would rebuild an unbroken tempo map and re-judge every note after
+  the pause as late, which is the exact bug the judge's `retime` was added to fix.
+
+- **Every failure to rebuild is a stated reason.** A piece a later build no longer ships, a report
+  truncated mid-block, a spec this build cannot read — all come back as `Lost`/`Unreadable` with
+  text. A blank would read as "nothing went wrong", and "no session has been played" and "the run
+  was lost" are different situations.

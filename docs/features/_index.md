@@ -28,7 +28,7 @@ that something works; if you find one that does not, the row is the bug.
 | Practice history persisted across restart and update | shipped | Room stores | 74 instrumented tests incl. a real v1→v2 migration (spec I4) |
 | Per-skill results rather than one percentage | shipped | `SkillTag` on notes | skills derived once in `:core:score` |
 | Progress, repertoire and settings screens | shipped | — | verified by looking; no instrumented UI tests (a stated gap) |
-| Diagnostics report, shareable with no network | shipped | `Diag` | 12 JVM tests on the buffer; **that a report can reconstruct a session is not yet proven** (spec I7) |
+| Diagnostics report, shareable with no network | shipped | `Diag` + `SessionReplay` | 12 JVM tests on the buffer; 10 more that re-judge a session **from its own report** and reach the same verdicts (spec I7) |
 | Signed APK per push, installable via Obtainium | shipped | GitHub Actions | `v0.1.<run>` releases; `/releases/latest/download/primavista.apk` verified 200 |
 | Trill, the mascot | shipped | `MascotMood` | drawn in code from one boolean-union silhouette, seven moods, scales 24dp→200dp; her mood is derived from the same tone as the score so she cannot contradict it |
 | Reading ahead: a card over the music at the playhead | shipped | `ReadingLead` | [`reading-ahead.md`](reading-ahead.md); 8 JVM tests plus a v3→v4 migration proving it arrives off |

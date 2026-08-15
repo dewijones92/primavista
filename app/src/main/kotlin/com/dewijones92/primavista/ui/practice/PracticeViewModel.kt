@@ -9,6 +9,7 @@ import com.dewijones92.primavista.database.PracticeSettings
 import com.dewijones92.primavista.database.SessionId
 import com.dewijones92.primavista.database.StoredSession
 import com.dewijones92.primavista.di.InputMode
+import com.dewijones92.primavista.di.LastSession
 import com.dewijones92.primavista.di.PracticeSelection
 import com.dewijones92.primavista.di.PracticeWiring
 import com.dewijones92.primavista.di.openingInput
@@ -17,12 +18,17 @@ import com.dewijones92.primavista.notation.GlyphMetrics
 import com.dewijones92.primavista.notation.StaffSpaces
 import com.dewijones92.primavista.notation.StaffSystem
 import com.dewijones92.primavista.practice.AnswerSource
+import com.dewijones92.primavista.practice.ClaimedVerdict
 import com.dewijones92.primavista.practice.Conductor
 import com.dewijones92.primavista.practice.JudgeState
 import com.dewijones92.primavista.practice.NoteJudgement
+import com.dewijones92.primavista.practice.PauseLeg
 import com.dewijones92.primavista.practice.PerformanceJudge
+import com.dewijones92.primavista.practice.PlayedNote
 import com.dewijones92.primavista.practice.ReadingLead
 import com.dewijones92.primavista.practice.RefusalReason
+import com.dewijones92.primavista.practice.ScoreRef
+import com.dewijones92.primavista.practice.SessionReplay
 import com.dewijones92.primavista.practice.SessionResult
 import com.dewijones92.primavista.practice.Stage
 import com.dewijones92.primavista.practice.TickTiming
@@ -32,6 +38,8 @@ import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.Midi
 import com.dewijones92.primavista.score.Note
 import com.dewijones92.primavista.score.Score
+import com.dewijones92.primavista.score.ScoreId
+import com.dewijones92.primavista.score.ScoreOrigin
 import com.dewijones92.primavista.score.SkillTag
 import com.dewijones92.primavista.score.Ticks
 import com.dewijones92.primavista.score.TimeSignature
@@ -340,6 +348,7 @@ public class PracticeViewModel(
                             diag.counted("input", "notesPlayedBeforeThisRunBegan")
                             return@collect
                         }
+                        record?.heard(note)
                         val (next, settled) = judge.advance(current, note)
                         judgeState = next
                         if (settled.isNotEmpty()) applyJudgements(settled)
@@ -413,6 +422,7 @@ public class PracticeViewModel(
                 "paused at pos=${conductor.position().value}ticks judged=${record.judgements.size}; " +
                     "saving now so a kill cannot lose it",
             )
+            rememberReplay(record, conductor)
             viewModelScope.launch { record.save(finished = false) }
         } else {
             diag.event(TAG, "paused at pos=${conductor.position().value}ticks (listening; nothing to save)")
@@ -535,6 +545,7 @@ public class PracticeViewModel(
                 "weakest=${result.skillOutcomes.filter { it.attempts > 0 }.minByOrNull { it.accuracy }?.tag}",
         )
         viewModelScope.launch {
+            conductor?.let { rememberReplay(record, it) }
             record?.save(finished = true)
             wiring.recordSkills(result.skillOutcomes)
         }
@@ -665,9 +676,29 @@ private class SessionRecord(
 
     val judgements: MutableList<NoteJudgement> = mutableListOf()
 
+    /** Every note heard, kept because a verdict cannot be re-judged from its own outcome (spec I7). */
+    val played: MutableList<PlayedNote> = mutableListOf()
+
     fun add(settled: List<NoteJudgement>) {
         judgements += settled
     }
+
+    fun heard(note: PlayedNote) {
+        played += note
+    }
+
+    /** What the report carries, so a week later this run can be re-judged rather than guessed at. */
+    fun replay(legs: List<PauseLeg>): SessionReplay = SessionReplay(
+        score = scoreRefOf(score),
+        tempoBpm = tempoBpm,
+        time = score.measures.firstOrNull()?.time ?: TimeSignature.FourFour,
+        legs = legs,
+        inputLabel = source.label,
+        polyphony = source.polyphony,
+        latency = source.latency,
+        played = played.toList(),
+        claimed = judgements.map(ClaimedVerdict::of),
+    )
 
     suspend fun save(finished: Boolean) {
         wiring.save(
@@ -762,4 +793,37 @@ private fun remembering(
     PracticeChange.Metronome -> { settings -> settings.copy(metronomeOn = next.metronomeOn) }
     is PracticeChange.ReadAhead -> { settings -> settings.copy(readingLeadBeats = change.lead.beats) }
     PracticeChange.Echo -> null
+}
+
+/**
+ * How to name this score in a report so a later build can rebuild it.
+ *
+ * A generated exercise carries its seed and spec and is reproducible exactly; a parsed one carries
+ * the id it was read under, and a passage's id encodes the bars it came from (see `Score.excerpt`).
+ */
+private fun scoreRefOf(score: Score): ScoreRef = when (val origin = score.origin) {
+    is ScoreOrigin.Generated -> ScoreRef.Generated(origin.seed, origin.spec)
+    is ScoreOrigin.Parsed -> passageRefOf(score.id) ?: ScoreRef.Shipped(score.id)
+}
+
+private fun passageRefOf(id: ScoreId): ScoreRef.Passage? {
+    val piece = id.value.substringBeforeLast(PASSAGE_MARK, missingDelimiterValue = "")
+    if (piece.isEmpty()) return null
+    val bars = id.value.substringAfterLast(PASSAGE_MARK).split(PASSAGE_RANGE)
+    val from = bars.firstOrNull()?.toIntOrNull() ?: return null
+    val last = bars.getOrNull(1)?.toIntOrNull() ?: return null
+    return ScoreRef.Passage(ScoreId(piece), fromBar = from, bars = last - from + 1)
+}
+
+private const val PASSAGE_MARK = "#"
+private const val PASSAGE_RANGE = "-"
+
+/**
+ * Puts the run where the diagnostics report can find it (docs/spec.md I7).
+ *
+ * Called at pause as well as at finish, for the same reason the session itself is written down
+ * twice: a run killed mid-piece is exactly the one worth being able to re-judge.
+ */
+private fun rememberReplay(record: SessionRecord?, conductor: Conductor) {
+    record?.let { LastSession.remember(it.replay(conductor.pauseLegs())) }
 }

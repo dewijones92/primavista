@@ -1,10 +1,10 @@
 ---
 title: A diagnostics report that can reconstruct a session
 kind: todo
-status: planned
+status: done
 priority: high
 area: ui
-updated: 2026-08-07
+updated: 2026-08-15
 ---
 
 # A diagnostics report that can reconstruct a session
@@ -46,3 +46,26 @@ from reading code instead.
   back through `PerformanceJudge`, and asserts it reproduces the verdicts the report claims.
   That test is what makes spec I7 real; without it the report is decoration.
 - Sharing works with no `INTERNET` permission (share sheet only — spec I6).
+
+## What was built (2026-08-15)
+
+`SessionReplay` in `:core:practice` — a record of the **inputs** to a judgement, so a report can be
+re-judged rather than read about. `SessionReplayCodec` writes it as lines inside the shared report
+and reads it back out of one; `LastSession` in `:app` holds the run and appends the block.
+
+Everything on the list above is carried, with two changes worth knowing:
+
+- **The latency travels whole, not as a number.** The list asked for "the measured or assumed
+  latency and which of the two it was" — so the block carries `InputLatency`, provenance included.
+  An assumed 60ms and a measured 60ms produce the same correction and completely different
+  confidence in a verdict built on it.
+- **The claim is carried, and is never what the replay reads.** A report says what the app decided;
+  the replay reaches its own answer from the seed and the notes, and the test compares the two. A
+  companion test forces the claim wrong and asserts the replay disagrees, because a comparison that
+  cannot fail proves nothing.
+
+Verified end to end on a device — see the quote in [`../spec.md`](../spec.md) I7.
+
+**Not covered:** the layout is not replayed, so a claim about I1's scroll geometry is still read
+rather than recomputed. The block is also in memory for one session only; the practice history in
+`:core:database` is where sessions live long-term.

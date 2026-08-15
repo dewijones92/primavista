@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dewijones92.primavista.BuildConfig
 import com.dewijones92.primavista.common.Diag
+import com.dewijones92.primavista.di.LastSession
 
 /**
  * The report screen. docs/spec.md I7 says every invariant must be settleable from a report alone,
@@ -46,7 +47,7 @@ import com.dewijones92.primavista.common.Diag
 @Composable
 public fun DiagnosticsScreen(diag: Diag, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    var report by remember { mutableStateOf(diag.report(reportHeader())) }
+    var report by remember { mutableStateOf(wholeReport(diag)) }
 
     Column(modifier.fillMaxSize().padding(16.dp)) {
         Text("Diagnostics", style = MaterialTheme.typography.titleLarge)
@@ -62,7 +63,7 @@ public fun DiagnosticsScreen(diag: Diag, modifier: Modifier = Modifier) {
             Button(onClick = { share(context, report) }, modifier = Modifier.testTag("share-report")) {
                 Text("Share report")
             }
-            TextButton(onClick = { report = diag.report(reportHeader()) }) { Text("Refresh") }
+            TextButton(onClick = { report = wholeReport(diag) }) { Text("Refresh") }
         }
 
         Spacer(Modifier.height(12.dp))
@@ -110,3 +111,13 @@ private fun share(context: Context, report: String) {
     }
     context.startActivity(Intent.createChooser(intent, "Share diagnostics"))
 }
+
+/**
+ * The log, plus the block that lets the last session be **re-judged** rather than read about.
+ *
+ * That block is what makes docs/spec.md I7 a property instead of an intention: it carries the
+ * music, the clock and every note heard, so a fresh session can reach the same verdicts or say why
+ * it cannot. `SessionReplayTest` proves it round-trips out of a report exactly like this one.
+ */
+private fun wholeReport(diag: Diag): String =
+    diag.report(reportHeader()) + "\n\n" + LastSession.block()

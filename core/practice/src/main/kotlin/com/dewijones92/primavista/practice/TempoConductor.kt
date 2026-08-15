@@ -83,6 +83,8 @@ public class TempoConductor(
 
     override fun timingSnapshot(): TickTiming = timeline
 
+    override fun pauseLegs(): List<PauseLeg> = legs.map { PauseLeg(it.fromTicks, it.originNanos) }
+
     override fun nanosFor(position: Ticks): Long = timeline.nanosFor(position)
 
     override fun ticksAt(nanos: Long): Ticks {

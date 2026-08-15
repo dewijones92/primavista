@@ -79,6 +79,13 @@ public interface Conductor : TickTiming {
      * was handed the live transport instead.
      */
     public fun timingSnapshot(): TickTiming
+
+    /**
+     * The same tempo map in the form a diagnostics report can carry, so a session can be re-judged
+     * from a report a week later (docs/spec.md I7). [timingSnapshot] is the live object; this is
+     * the handful of numbers that rebuild it.
+     */
+    public fun pauseLegs(): List<PauseLeg>
 }
 
 /**

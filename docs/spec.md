@@ -190,17 +190,28 @@ over. A feature that works but cannot be shown to have worked is not finished.
 
 **How it is held:** the `Diag` ring buffer records decisions **with their inputs** (see
 `CLAUDE.md`), high-frequency events are counted rather than logged per-event, and every
-report carries the build's git SHA so a finding can be dated against the code.
+report carries the build's git SHA so a finding can be dated against the code. On top of that the
+report carries a **replay block** — the inputs to the judgement rather than a summary of its
+output: how to rebuild the music, the tempo map including every pause that happened, the input and
+its latency *with the provenance of that latency*, every note heard with its time and confidence,
+and every verdict the app claimed with its `dt`.
 
-**Proven by:** nothing yet, and that is still the honest state. *Status: the buffer's own mechanics
-are held by `RingBufferDiagTest` — that a hot counted event costs few entries and loses no count,
-that overflow says how many it dropped, that a throwing state block degrades to a note rather than
-losing the report, and that concurrent writers lose nothing. But the invariant is not about the
-buffer, it is about whether a report can settle the other six, and **nothing asserts that**. The
-test that would — take a finished session's report, feed its recorded notes and its seed back
-through `PerformanceJudge`, and assert it reproduces the verdicts the report claims — is on the
-backlog (`docs/todos/diagnostics-report.md`). Until it exists, I7 is a design intention with good
-foundations, not a proven property.*
+**Proven by:** `SessionReplayTest` (10 JVM tests), which plays a session, writes the block, reads it
+back out of a report's worth of surrounding text, rebuilds the music **from the seed alone**, and
+re-judges — then asserts the verdicts match what the report claimed. A companion test forces the
+claim wrong and asserts the replay disagrees, so the comparison has teeth rather than comparing a
+value with itself. `LastSessionTest` proves the same block survives the real difficulty codec the
+app ships. A run that cannot be rebuilt — a piece a later build no longer ships, a truncated report,
+a spec this build cannot read — comes back as a **stated reason**, never as a blank.
+
+Seen end to end on a device, 2026-08-15. A real report from the emulator carried
+`score=generated 1786801765805 <full spec>`, `legs=-40320@1095021410707`, seven `played=` lines with
+pitch, nanos and confidence, and verdicts including `claimed=2:WrongPitch:-222.420635` and
+`claimed=-1:Extra:` — the sentinel-free index the judge insists on, travelling intact.
+
+*Still outside the guard: it proves a report can settle **I2** (the judge's verdicts) exactly, and
+carries what I1, I3 and I5 need. It does not yet replay the layout, so a claim about I1's scroll
+geometry is still read rather than recomputed.*
 
 That said, the report has already twice done in practice what this invariant asks of it: it found
 the origin-zero timing bug on 2026-08-07 (a tap at uptime 29,542s landing at tick 555,868,801 in a
