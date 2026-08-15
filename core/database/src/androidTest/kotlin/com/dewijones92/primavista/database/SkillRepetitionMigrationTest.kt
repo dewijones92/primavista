@@ -10,7 +10,6 @@ import com.dewijones92.primavista.score.SkillTag
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -76,16 +75,5 @@ class SkillRepetitionMigrationTest {
         assertEquals(mature, reloaded)
     }
 
-    private fun opened(): PrimaVistaDatabase {
-        val opening = PrimaVistaDatabase.open(context)
-        assertTrue("the practice history would not open: $opening", opening is DatabaseOpening.Opened)
-        return (opening as DatabaseOpening.Opened).database
-    }
-
-    private inline fun <R> PrimaVistaDatabase.use(block: (PrimaVistaDatabase) -> R): R =
-        try {
-            block(this)
-        } finally {
-            close()
-        }
+    private fun opened(): PrimaVistaDatabase = openRealDatabase(context)
 }

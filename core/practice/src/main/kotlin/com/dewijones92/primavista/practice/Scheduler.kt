@@ -31,6 +31,39 @@ public data class SkillState(
     }
 
     public fun isDue(nowEpochMillis: Long): Boolean = nowEpochMillis >= dueAtEpochMillis
+
+    /**
+     * Whether the reading is reliable. The **one** definition of solid in the app: [Curriculum]
+     * passes a stage on it, and the Progress screen's "Solid" bucket is this plus not-due. See
+     * .claude/CODE-NOTES.md.
+     */
+    public val isSolid: Boolean get() = strength >= SOLID_STRENGTH
+
+    public companion object {
+        /** Deliberately below 1.0: [strength] approaches certainty asymptotically and never reaches it. */
+        public const val SOLID_STRENGTH: Double = 0.8
+    }
+}
+
+/**
+ * A narrowing of the field a choice may be drawn from — how a [Stage] reaches the scheduler.
+ *
+ * The stage decides *which skills are in play* and at *what level*; the scheduler still decides
+ * which of those to drill and the generator still writes the notes. A stage that chose its own
+ * material would be a second scheduler, which is the failure docs/journey.md names outright.
+ *
+ * [base] is the spec a generated drill starts from, so a stage-seven exercise is built on
+ * stage-seven material rather than on the bottom rung with one dial turned. Null means the
+ * scheduler's own base.
+ */
+public data class PracticeFocus(
+    val skills: Set<SkillTag>,
+    val base: DifficultySpec? = null,
+) {
+    public companion object {
+        /** No narrowing: the whole skill store, as it was before stages existed. */
+        public val None: PracticeFocus = PracticeFocus(emptySet())
+    }
 }
 
 /** Persistence port. Implemented by Room in `:core:database`; faked in tests. */
@@ -65,6 +98,10 @@ public interface PracticeScheduler {
      * than assumed: without it the scheduler recommended two-hand material to a mono mic, which
      * `PerformanceJudge.accepts` then refused — the app proposing work it will not mark. The
      * polyphony gate belongs on everything offered, generated material included.
+     *
+     * [focus] narrows the field to a stage's skills without taking the choice away — a skill named
+     * there but never yet read is a candidate at full weakness, since a stage's new skills are
+     * exactly the ones with no history.
      */
     public fun next(
         available: List<ScoreSummary>,
@@ -72,6 +109,7 @@ public interface PracticeScheduler {
         input: Polyphony,
         nowEpochMillis: Long,
         seed: Long,
+        focus: PracticeFocus = PracticeFocus.None,
     ): PracticeChoice
 
     /** The skills most worth drilling right now, worst first. Exposed so the UI can say why. */

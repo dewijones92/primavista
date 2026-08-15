@@ -24,6 +24,20 @@ internal fun openTestDatabase(): PrimaVistaDatabase =
         .addCallback(PrimaVistaDatabase.ForeignKeysOn)
         .build()
 
+/** The real on-disk open, so a migration test exercises the list of migrations the app ships. */
+internal fun openRealDatabase(context: Context): PrimaVistaDatabase {
+    val opening = PrimaVistaDatabase.open(context)
+    check(opening is DatabaseOpening.Opened) { "the practice history would not open: $opening" }
+    return opening.database
+}
+
+internal inline fun <R> PrimaVistaDatabase.use(block: (PrimaVistaDatabase) -> R): R =
+    try {
+        block(this)
+    } finally {
+        close()
+    }
+
 /** A refusal in a test that expected data is a failure with its reason, never a silent empty list. */
 internal fun <T> StoredReading<T>.readOrFail(): T = when (this) {
     is StoredReading.Readable -> value

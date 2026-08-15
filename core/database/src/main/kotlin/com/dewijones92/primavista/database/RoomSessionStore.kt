@@ -4,6 +4,8 @@ import androidx.room.withTransaction
 import com.dewijones92.primavista.common.Diag
 import com.dewijones92.primavista.common.NoOpDiag
 import com.dewijones92.primavista.practice.NoteJudgement
+import com.dewijones92.primavista.practice.Streak
+import java.time.ZoneId
 
 /**
  * Room's [SessionStore]. The write is one transaction: a session whose verdicts were half
@@ -52,10 +54,32 @@ public class RoomSessionStore(
         readings.filterIsInstance<VerdictRowReading.Readable>().map { it.judgement }
     }
 
+    /**
+     * The streak, derived from the sessions rather than counted alongside them, so it cannot
+     * disagree with the practice it describes. The fold is `:core:practice`'s [Streak]; this
+     * supplies the evidence. See `.claude/CODE-NOTES.md`.
+     */
+    public suspend fun streak(zone: ZoneId, nowEpochMillis: Long): StoredReading<Streak> =
+        diag.readOrRefuse(TAG, "the days practised") {
+            val played = sessions.startedAtWhereANoteWasPlayed(VerdictKinds.MISSED)
+            Streak.of(played, zone, nowEpochMillis).also {
+                diag.event(TAG, describeStreak(it, played.size, zone, nowEpochMillis))
+            }
+        }
+
     override suspend fun delete(id: SessionId) {
         sessions.delete(id.value)
         diag.event(TAG, "session=${id.value} deleted, verdicts cascade")
     }
+
+    private fun describeStreak(
+        streak: Streak,
+        sessionsCounted: Int,
+        zone: ZoneId,
+        nowEpochMillis: Long,
+    ): String =
+        "streak read sessionsWithANotePlayed=$sessionsCounted days=${streak.daysPractised} " +
+            "current=${streak.currentDays}d best=${streak.bestDays}d zone=$zone now=$nowEpochMillis"
 
     private fun warnIfOriginLost(session: StoredSession) {
         if (session.origin == null) {

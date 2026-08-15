@@ -99,6 +99,21 @@ public data class SkillOutcome(
     val cleanAttempts: Int,
 ) {
     public val accuracy: Double get() = if (attempts == 0) 0.0 else cleanAttempts.toDouble() / attempts
+
+    /**
+     * Whether this counts as having read the skill, rather than having been shown it.
+     *
+     * The one definition of "that went well". The scheduler's update rule and the placement read's
+     * decision to climb both ask it, because two thresholds for the same judgement would let the
+     * app pass a stage it would not credit a session for. Zero attempts is never clean: an untested
+     * skill is absence of evidence, not evidence of failure.
+     */
+    public val isClean: Boolean get() = attempts > 0 && accuracy >= CLEAN_ACCURACY
+
+    public companion object {
+        /** Fraction of a skill's attempts that must be clean for a session to count for it. */
+        public const val CLEAN_ACCURACY: Double = 0.8
+    }
 }
 
 public data class SessionResult(

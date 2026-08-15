@@ -18,7 +18,27 @@ public object PrimaVistaMigrations {
         }
     }
 
-    public val ALL: List<Migration> = listOf(AddSkillRepetition)
+    /**
+     * The journey's two tables. Nothing existing is touched, so every session, verdict and skill
+     * row carries over untouched — see `.claude/CODE-NOTES.md`.
+     */
+    public val AddJourney: Migration = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `stage_progress` (`stageNumber` INTEGER NOT NULL, " +
+                    "`firstReachedAtEpochMillis` INTEGER NOT NULL, `firstPassedAtEpochMillis` INTEGER, " +
+                    "PRIMARY KEY(`stageNumber`))",
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `placement_reads` (`takenAtEpochMillis` INTEGER NOT NULL, " +
+                    "`outcomeKind` TEXT NOT NULL, `probesTaken` INTEGER NOT NULL, " +
+                    "`seededSkills` INTEGER NOT NULL, `summary` TEXT NOT NULL, " +
+                    "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL)",
+            )
+        }
+    }
+
+    public val ALL: List<Migration> = listOf(AddSkillRepetition, AddJourney)
 
     /**
      * Stored versions that cannot reach [target] by any chain of [migrations]. Empty is the

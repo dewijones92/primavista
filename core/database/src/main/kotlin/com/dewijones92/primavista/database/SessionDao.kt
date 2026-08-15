@@ -25,6 +25,14 @@ public interface SessionDao {
 
     @Query("SELECT COUNT(*) FROM sessions")
     public suspend fun count(): Int
+
+    /** Opening the app is not practising, so a session with no note played is not a day. */
+    @Query(
+        "SELECT s.startedAtEpochMillis FROM sessions s WHERE EXISTS (" +
+            "SELECT 1 FROM note_verdicts v WHERE v.sessionId = s.id AND v.kind <> :missedKind" +
+            ") ORDER BY s.startedAtEpochMillis",
+    )
+    public suspend fun startedAtWhereANoteWasPlayed(missedKind: String): List<Long>
 }
 
 @Dao

@@ -675,6 +675,90 @@ Agents implementing a module append their own `##` section and never rewrite ano
   database-level failure that `PrimaVistaDatabase.open` has already refused. If a column with a
   converter is ever added to that table, it needs the same treatment as the rest.
 
+### Schema v3 — the journey: dated milestones, the placement read, the streak (2026-08-15)
+
+- **There is no stored "current stage", and that is the central decision.** `:core:practice`'s
+  `Curriculum.currentStage(states)` derives where Dewi stands from the skill states, so a column
+  holding it would be a second answer to the same question — one that goes stale the moment a skill
+  lapses, while looking authoritative. The first draft of this pass *did* store it (a `journey`
+  singleton with `currentStageKey`); it was removed once `Curriculum` landed, because two answers is
+  the `specTargeting` failure this repo has already paid for. `SchemaAndMigrationTest.theSchemaStores
+  NoCurrentStageOfItsOwn` greps the exported schema so it cannot come back by accident.
+
+- **So the two tables hold only what cannot be derived: dates, and the fact of the placement read.**
+  `stage_progress` says when a stage was first reached and when it was first passed; `placement_reads`
+  keeps every placement as an event. Skill states carry no history, so neither date is recoverable
+  any other way — which is exactly the test of whether storing something is duplication.
+
+- **`firstPassedAtEpochMillis` is a dated event, never a claim about today.** A stage is passed when
+  its skills are solid, and skills lapse, so the column records the day the curriculum first said so.
+  The path may draw "passed on 12 Aug" from it; whether it is passed *now* is `Curriculum.isPassed`.
+  First-date-wins on the write for the same reason: restamping would destroy the only record of when
+  the reading actually became solid.
+
+- **A stage is stored as `StageId.number`, not as an invented key.** The first draft used an opaque
+  `StageKey(String)` on the theory that storing a position is fragile — true, but the alternative is
+  worse: `:app` would have to map `StageId` ↔ `StageKey` somewhere nobody owns, and two screens
+  spelling that mapping differently is the same bug one layer up. The renumbering hazard is real and
+  belongs to the curriculum (`StagedCurriculum` already requires stages to be numbered 1..n in
+  order); inserting a stage mid-path would shift the meaning of stored rows *and* of every
+  `StageId` in memory, so it is a curriculum-wide decision rather than a storage trick.
+
+- **Never taken and unreadable are opposite statements about the placement read.**
+  `PlacementReading` is `NeverTaken` | `Taken` | `Unreadable`, and the unreadable case still carries
+  the date, because *that* part of the row reads perfectly — only the conclusion is lost. Collapsing
+  them would offer the placement read again to someone who has already sat through it, which is the
+  module's oldest bug (a refusal arriving as an absence) wearing a new hat.
+
+- **`PlacementRecord.of(placement, …)` is the one place a `Placement` becomes a row.** It stores
+  `probesTaken`, the *count* of seeded skills, and the placement's own `summary` line — not the
+  seeded states themselves, which belong in `skill_states` and are already there. Note their design
+  deliberately concludes no stage (`Placement` is "not a stage"), so nothing here records one either.
+
+- **The streak is derived, and the fold is not ours.** `:core:practice`'s `Streak.of` is the single
+  definition of days-and-runs; this module supplies the evidence and nothing else. A first draft of
+  this pass shipped a second fold (`PracticeStreaks`) written minutes before `Streak` landed in the
+  sibling module — two answers to "how many days in a row", which is precisely what the twin laws
+  forbid. It was deleted rather than kept-and-documented.
+
+- **A day counts when a note was actually played** — `startedAtWhereANoteWasPlayed` selects sessions
+  having a verdict whose kind is not `missed`, passed the `VerdictKinds.MISSED` constant rather than
+  a literal. Two things make the obvious version wrong: a session row is written at *pause* as well as
+  at finish, so opening the app and quitting stores one; and a piece that scrolled past untouched is
+  judged entirely `Missed`. Counting either would make the streak a measure of showing up, which
+  docs/journey.md rules out in as many words. **Cross-module wrinkle worth settling:** `Streak.of`'s
+  parameter is named `finishedSessionEpochMillis`, and what this store hands it is deliberately
+  broader (paused-but-played counts) and narrower (finished-but-silent does not).
+
+- **The streak query is immune to the `@TypeConverter` defect, and a test pins that.**
+  `latencyProvenance` and friends fail a whole cursor on an unknown enum name (see the 2026-08-08
+  note above); this query selects one INTEGER column and touches no converter, so the streak survives
+  a file that refuses `recent()`. `anEnumNameThisBuildCannotReadRefusesTheHistoryButNotTheStreak`
+  exists so a later `SELECT *` cannot quietly give that property away.
+
+- **The streak's diagnostics line carries `now=` and `zone=`, not just the answer.** `current=3d`
+  cannot be checked from a report without knowing what the app thought today was, and those two
+  fields are what make the line re-derivable (docs/spec.md I7).
+
+- **The zone is a parameter, not `ZoneId.systemDefault()`.** Doing the day arithmetic in SQL with
+  `date(…, 'unixepoch', 'localtime')` would bake the device's timezone into the query and make two
+  adjacent reads disagree after a flight.
+
+- **Migration 2→3 creates two tables and touches nothing else**, so every session, verdict, skill and
+  settings row carries over by construction. `JourneyMigrationTest` runs the shipping
+  `PrimaVistaDatabase.open` against a v2 file *and* a v1 file, the second proving the two-migration
+  chain a phone that skipped an update would take. Verified negatively on 2026-08-15: with
+  `AddJourney` removed from `PrimaVistaMigrations.ALL`, all three tests fail with "A migration from 2
+  to 3 was required but not found", so the gate is real rather than assumed.
+
+- **KSP will not re-export the schema if the compile task comes out of the build cache.** Deleting
+  `schemas/3.json` and rebuilding left it missing and failed `SchemaAndMigrationTest`, because the
+  schema directory is outside `build/` and is not a tracked output.
+  `:core:database:kspDebugKotlin --rerun` is the fix.
+
+- **`openRealDatabase` and `use` moved into `TestFixtures`.** The second migration test would have
+  been their second copy, which is the duplication the DRY law names outright.
+
 ## :lib:pitch
 
 - **`YinPitchDetector.interpolatedLag`** is not polish. Without it the estimate quantises to an
@@ -1122,6 +1206,109 @@ Agents implementing a module append their own `##` section and never rewrite ano
   real conductor means the transport's own pause/resume is in the loop, and both tests share one
   model of how `PracticeViewModel` folds: sample the conductor per frame, fold an input in at its
   own timestamp, re-time on resume.
+
+### The path, the placement read and the streak (2026-08-15)
+
+- **A stage claims what it *adds*; its spec carries everything before it.** The two run in opposite
+  directions on purpose. `Stage.skills` is only the new material, which is what makes "the first
+  stage that is not solid" a meaningful answer — if each stage restated its inheritance, every gap
+  would drag the reader back to stage one. `Stage.spec` is the opposite: written as a **delta on the
+  previous stage's spec** in `CurriculumStages.kt`, so the cumulative property is structural rather
+  than remembered. Stage seven cannot quietly lose stage two's quarter notes, because stage seven
+  never restates the symbol set.
+
+- **Two tests decide the stage list, and one of them found a live defect in the ladder.**
+  `every skill a stage claims is one its own material actually tests` (the union over 32 seeds) stops
+  a stage claiming something unreachable, i.e. a rung that can never be climbed. The stronger one is
+  `a drill aimed at a claimed skill contains it more often than not`, which is what caught
+  **`specTargeting(RhythmFigure(Half, dots = 1))` producing a drill that cannot contain a dotted half
+  at all — 0 of 32.** `withRhythmFigure` narrows `symbols` to the one figure, and in 4/4 a dotted half
+  leaves a quarter to fill that the symbol set no longer has, so `BarFill` never offers it;
+  `widenUntilBarsFill` does not fire because the bar *can* be filled, just not with the target. The
+  scheduler would then have offered the same untestable exercise forever, since an outcome with zero
+  attempts changes no state. Stage eight's claim moved to the dotted **quarter** (32/32), which is the
+  commoner figure anyway. **The underlying `withRhythmFigure` weakness is still live in `:core:score`
+  and is not fixed here** — targeting any figure that cannot fill a bar alongside its own symbol has
+  the same shape. The threshold is "more often than not" rather than "always" because accidental
+  targeting is probabilistic (~78–94%): a bar sometimes has no room for the altered note.
+
+- **`SkillState.isSolid` is the one definition, and `:app` still holds a second copy.** Stage passing
+  and the Progress screen's "Solid" bucket must agree or the path and the screen tell two stories, and
+  this repo has already shipped two bugs that were purely a second copy of a decision. The definition
+  now lives on `SkillState` (strength ≥ `SOLID_STRENGTH`), and `ProgressModel.bucketOf`'s "Solid" is
+  exactly this **plus not-due** — due-ness is about spacing, not about reading, so a stage must not
+  un-pass itself every four hours. The duplication is recorded rather than removed because `:app` was
+  frozen for parallel work in the pass that added this; the fix is one line —
+  `ProgressModel.SOLID_STRENGTH` becomes `SkillState.SOLID_STRENGTH` and `bucketOf` asks
+  `state.isSolid`. Same story for `SkillOutcome.CLEAN_ACCURACY`, which the scheduler's update rule and
+  the placement read now share, so "that went well" cannot mean two things.
+
+- **`PracticeFocus` carries a base spec as well as the skills, and the base is the load-bearing
+  half.** Skills alone would narrow *what* is drilled while leaving the generator building from
+  `DefaultBase`, so a stage-seven leger-line drill would be four bars of bottom-rung treble with one
+  dial turned. Passing the stage's own spec as the base is not the stage picking material — the
+  scheduler still picks the target and the generator still writes the notes — it is the stage setting
+  the level, which is the only thing that makes the ladder mean anything.
+
+- **A focused skill with no state yet joins the pool at zero strength and due now.** Filtering the
+  stored states by the focus alone would make a stage's *new* skills unpickable, which is precisely
+  backwards: a stage's new skills are the ones with no history, and they are the entire point of
+  moving to it.
+
+- **`SpacedPracticeScheduler.DefaultBase` and stage one's spec are deliberately different, and that
+  is a duplication with a countdown on it.** `DefaultBase` is the base `specTargeting` starts from;
+  stage one's spec is the first rung's material (narrower: the middle band only, whole and half
+  notes). They answer different questions today, but they are both "the bottom of the ladder", and
+  the honest end state is `DefaultBase = Curriculum.Standard.stages.first().spec`. That changes live
+  behaviour and `AppPracticeWiring`, so it is not a same-pass change.
+
+- **The placement climbs 1 → 2 → 4 → 7 → 10 and stops at the first probe that does not go well.**
+  Accelerating rather than a binary search because docs/journey.md asks it to *start easy*: a binary
+  search opens an absolute beginner on grand-staff accidentals, which is the same insult as stage one
+  in the other direction. Five probes is the ceiling, so it is minutes rather than an exam. Skipping
+  a rung is safe because the specs are cumulative and, more importantly, because **nothing is credited
+  that was not attempted** — a probe at stage seven seeds only what its own notes actually tested.
+
+- **The climb reads `cleanliness`, not `accuracy`.** They differ by whether notes that were never
+  written count against you, and a placement that ignored a flurry of extras would place a reader
+  above what they can actually play.
+
+- **Four levers keep an over-generous placement cheap, and they are these four.** Evidence under
+  `MIN_ATTEMPTS_FOR_CREDIT` (3 notes) earns nothing at all, because two notes is not a reading; a
+  skill short of clean is seeded *proportionally below* solid rather than not at all, so it is
+  visible without being claimed; everything seeded is **due immediately**, so the ordinary scheduler
+  is free to disagree within one session; and `repetition` is always 0, so a placement never grants a
+  rung on the spacing ladder. Together they mean the worst case of placing someone too high is one
+  session, not a stranding.
+
+- **`Placement` deliberately does not carry a stage.** Where the reader stands is
+  `Curriculum.currentStage(placement.states)` and only ever that. A placement that also announced a
+  stage would be a second answer to a question that already has one, and the two would drift the
+  moment the scheduler updated a state.
+
+- **A refused probe is no evidence and ends the read.** It is not a bad result — spec I3's whole point
+  is that a refusal is a statement about the pairing, not about the playing — so it seeds nothing and
+  debits nothing, and the summary names the reason.
+
+- **A mono input can never pass stage four, and that is the honest answer rather than a bug.**
+  `playableBy` forces `bothHandsActive = false`, so no measure ever has two hands sounding, so
+  `HandIndependence` is never tagged and never becomes solid. The mic genuinely cannot judge two
+  hands. **The path UI has to say so** ("this rung needs the tapped keyboard") rather than leaving a
+  mic-only reader stuck at a rung with no explanation.
+
+- **`Streak` takes the timezone and the current time as arguments.** `ZoneId.systemDefault()` inside
+  pure code is untestable by construction, and "which day was that?" is a question about where the
+  reader is. Yesterday still counts as a live run, because the day is not over until it is over. There
+  is deliberately no "you broke it", no penalty and no record of what was lost: `currentDays = 0` is a
+  fact about the calendar. **Which sessions counted as practice is the caller's decision, not this
+  fold's**, and the parameter is named `practisedAtEpochMillis` for that reason: `RoomSessionStore`
+  passes sessions where a note was actually played, which is a better answer than "finished" and one
+  only the store has the evidence for. The rule this must never lose is that showing up is not
+  practice.
+
+- **`Curriculum.Standard` is `by lazy` because it is a companion property referring to a class
+  declared below it.** Eager initialisation there is an initialisation-order trap for a value that is
+  built once and never changes.
 
 ## :core:score
 
@@ -2023,3 +2210,78 @@ Agents implementing a module append their own `##` section and never rewrite ano
   metronome toggled on the practice screen survived a force-stop; `listenFirstOn` produced "PLAYING FOR
   YOU" on the next launch; revoking `RECORD_AUDIO` opened the next session on TAP with the notice and
   left the row on `mic`; and restoring the ceiling to 73 put a 60bpm exercise back at its own 60.
+
+## :app — Trill, the mascot
+
+- **The crest is a quaver's flag, and that is the whole reason she works as an icon.** Rounded won
+  the three-way comparison on legibility, but its own honest weakness was that at rest she said
+  nothing about music — off a wire she was just a plump bird. `CREST_SHAPE` replaces the quiff with
+  the flag borrowed from the Notehead variant: narrow at the crown, swelling over the top, hooking
+  back to a point, with the concave sweep on the underside. Brass body against a violet flag is also
+  both brand colours in one silhouette, which is what lets her be a 40dp chip and a launcher icon
+  rather than only a picture on a stave.
+
+- **The flag must have air under it or it reads as a beret.** The first attempt hugged the head's
+  curve and rendered as a violet cap; the fix was raising the inner edge so the crest detaches from
+  the crown at about x=0.465 and only the root is buried in the head. That gap is what makes the
+  shape read as an appendage with a hook rather than as a hat, and it is the thing to protect if the
+  head proportions are ever changed.
+
+- **`crestAngle` must stay inside roughly ±25°.** Wincing was first drawn at -36° and the flag folded
+  flat onto the crown — the beret again, in the one mood where the reader most needs to recognise
+  her. Wincing is now -14° and Sleepy -18°, and the droop is carried by the head duck and the brow
+  instead. A mood that needs to look more defeated should sink or tilt, not rotate the crest further.
+
+- **The crest is filled as `crest − (body ∪ head)`, not unioned into the brass.** The silhouette used
+  for the outline is still the single boolean union of body, tail, head, crest and both mandibles, so
+  one chunky stroke rims her everywhere with no seams. Only the *fill* is subtracted, which makes the
+  violet meet the brass exactly on the head's own edge — otherwise the crest's root drew an arbitrary
+  curve across the crown.
+
+- **`tailShape()` computes its own attachment.** The tail's roots and both control handles are derived
+  from the body ellipse at `TAIL_TOP_DEGREES` / `TAIL_FOOT_DEGREES`, so each edge leaves along the
+  body's own tangent and the union is smooth by construction. The previous drawing eyeballed the join
+  and left a concave notch at about 9 o'clock, visible at 200dp. Note the consequence of the geometry:
+  on the left of an ellipse the tangent is nearly vertical, so a tail that points left *must* leave
+  steeply and then bend — a tail authored to leave horizontally cannot be tangential, and that is why
+  the shape hugs the body before it flares.
+
+- **The bib and the feather creases are clipped to the silhouette.** They used to stay inside by
+  hand-checked extents, which is a promise rather than a guarantee; any future tweak to the body
+  radii or the bib would have leaked cream past the outline. `clipPath(body)` makes it unbreakable.
+
+- **The open beak's dark gape is `MOUTH_SHAPE` minus its own rotated self.** A static mouth shape
+  cannot work: the mandibles converge at the tip, so there is nothing to hide it behind when shut,
+  and a fixed wedge pokes past the beak once the jaw rotates. Differencing the wedge against itself
+  rotated by `beakOpen` yields exactly the opening at any angle, bounded by both mandibles' inner
+  edges, so it can never escape the beak.
+
+- **The eye is drawn as `eye − lid`, not eye-then-lid-on-top.** Painting a feather-coloured lid over
+  a filled dark oval left the oval's antialiased edge showing as a thin dark ring above the lid, which
+  read as a drawn-on eyelid crease at 88dp and up. One filled path has no shared boundary to alias.
+
+- **Wincing carries a second cue on purpose.** The raised inner brow that does the sympathy is a
+  stroke, and a hairline vanishes at 40dp, so the brow's weight now grows with `abs(browSlant)`
+  (`BROW_BOLD`) and the wince also opens the beak onto the dark gape and deepens the blush. Colour
+  and area survive shrinking; a hairline does not.
+
+- **`CONTENT_LEFT/TOP/WIDTH/HEIGHT` is her drawn extent across *every* mood, not the resting one.**
+  The box includes the crest at its highest rotation and the flourish marks, so she never clips a
+  crest and — more importantly — never changes size when the mood changes. Shrinking the box to fit
+  Idle would make her visibly grow and shrink as verdicts arrive.
+
+- **What the caller owes `TrillOnStaff`.** It sizes everything from the box *height*
+  (`STAFF_BOX_SPACES` staff spaces tall, bird `BIRD_STAFF_SPACES` spaces) and anchors her ankles on
+  the requested `staffStep`, drawing ledger lines from `LEDGER_FIRST_STEP` outwards. A step far from
+  the middle line therefore needs a taller box, and the composable will happily draw her past the top
+  rather than shrink her — the pun (height on the staff *is* pitch) only works if she actually moves.
+  `Trill` is the default because most callers have no staff geometry to give it.
+
+- **`MascotContract.kt` became `MascotMood.kt`.** With the comparison gallery and its three variants
+  deleted, the file's only classlike declaration is the enum, and detekt's `MatchingDeclarationName`
+  fails on the old name. `MascotPainter` and `MascotMoods` stayed — the painter is still the seam a
+  screen takes a mascot through.
+
+- **What was verified on the emulator.** Every mood at 200dp, 88dp and 40dp, on the manuscript ground
+  and on ink, plus `TrillOnStaff` at steps 0, 4 and 8 (two ledger lines, feet on the upper one). The
+  crest survives at 40dp in all seven moods, which was the test the design had to pass.

@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.dewijones92.primavista.common.Diag
 import com.dewijones92.primavista.common.NoOpDiag
 
-public const val DATABASE_VERSION: Int = 2
+public const val DATABASE_VERSION: Int = 3
 
 /**
  * What opening the practice history produced.
@@ -33,6 +33,8 @@ public sealed interface DatabaseOpening {
         RepertoireEntity::class,
         SettingsEntity::class,
         AudioRouteLatencyEntity::class,
+        StageProgressEntity::class,
+        PlacementReadEntity::class,
     ],
     version = DATABASE_VERSION,
     exportSchema = true,
@@ -50,6 +52,8 @@ public abstract class PrimaVistaDatabase : RoomDatabase() {
     public abstract fun settings(): SettingsDao
 
     public abstract fun routeLatency(): AudioRouteLatencyDao
+
+    public abstract fun journey(): JourneyDao
 
     public companion object {
         /** Named in app/src/main/res/xml/backup_rules.xml; changing it orphans the backup. */

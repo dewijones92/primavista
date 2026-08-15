@@ -3,6 +3,7 @@ package com.dewijones92.primavista.database
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -41,6 +42,30 @@ class SchemaAndMigrationTest {
         assertTrue(
             "skill_states has no repetition column in the exported schema",
             exportedSchema(DATABASE_VERSION).readText().contains("\"columnName\": \"repetition\""),
+        )
+    }
+
+    /** The path and the placement read are stored, or the journey restarts on every update. */
+    @Test
+    fun theCurrentSchemaStillStoresThePathAndThePlacementRead() {
+        val exported = exportedSchema(DATABASE_VERSION).readText()
+
+        listOf("stage_progress", "placement_reads").forEach {
+            assertTrue("$it is missing from the exported schema", exported.contains("\"tableName\": \"$it\""))
+        }
+    }
+
+    /**
+     * Where Dewi stands is `Curriculum.currentStage(states)` and only ever that, so a stored copy
+     * would be a second answer that could disagree with it. See `.claude/CODE-NOTES.md`.
+     */
+    @Test
+    fun theSchemaStoresNoCurrentStageOfItsOwn() {
+        val exported = exportedSchema(DATABASE_VERSION).readText()
+
+        assertFalse(
+            "the schema stores a current stage, which the skill states already answer",
+            exported.contains("currentStage")
         )
     }
 

@@ -4,17 +4,14 @@ import com.dewijones92.primavista.score.Alter
 import com.dewijones92.primavista.score.Clef
 import com.dewijones92.primavista.score.DifficultySpec
 import com.dewijones92.primavista.score.KeySignature
-import com.dewijones92.primavista.score.Midi
 import com.dewijones92.primavista.score.NoteSymbol
 import com.dewijones92.primavista.score.PitchBand
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.ScoreSummary
 import com.dewijones92.primavista.score.SkillTag
 import com.dewijones92.primavista.score.Staff
-import com.dewijones92.primavista.score.StaffGeometry
 import com.dewijones92.primavista.score.TimeSignature
 
-private const val CLEAN_ACCURACY_THRESHOLD = 0.8
 private const val STRENGTH_GROWTH = 0.4
 private const val LAPSE_RETENTION = 0.35
 private const val BASE_INTERVAL_MILLIS = 4L * 60L * 60L * 1000L
@@ -47,9 +44,11 @@ public class SpacedPracticeScheduler(
         input: Polyphony,
         nowEpochMillis: Long,
         seed: Long,
+        focus: PracticeFocus,
     ): PracticeChoice {
-        val due = states.filter { it.isDue(nowEpochMillis) }
-        val targets = weakest(due.ifEmpty { states }, nowEpochMillis, TARGET_SKILL_COUNT)
+        val pool = pooled(states, focus.skills, nowEpochMillis)
+        val due = pool.filter { it.isDue(nowEpochMillis) }
+        val targets = weakest(due.ifEmpty { pool }, nowEpochMillis, TARGET_SKILL_COUNT)
             .map { it.tag }
             .filter { input == Polyphony.Poly || it != SkillTag.HandIndependence }
         val byTag = states.associateBy { it.tag }
@@ -69,8 +68,9 @@ public class SpacedPracticeScheduler(
             val targeting = piece.skills.filter(targets::contains).toSet()
             return PracticeChoice.Piece(piece.id, piece.defaultTempoBpm, targeting)
         }
-        val target = targets.firstOrNull() ?: fundamentalSkillOf(base)
-        return PracticeChoice.Generated(seed, specTargeting(target, base).playableBy(input), setOf(target))
+        val from = focus.base ?: base
+        val target = targets.firstOrNull() ?: fundamentalSkillOf(from)
+        return PracticeChoice.Generated(seed, specTargeting(target, from).playableBy(input), setOf(target))
     }
 
     override fun weakest(states: List<SkillState>, nowEpochMillis: Long, limit: Int): List<SkillState> =
@@ -100,6 +100,18 @@ public class SpacedPracticeScheduler(
         return revised + added
     }
 
+    /** A focused skill nobody has read yet is a candidate, not an omission. See .claude/CODE-NOTES.md. */
+    private fun pooled(
+        states: List<SkillState>,
+        focus: Set<SkillTag>,
+        nowEpochMillis: Long,
+    ): List<SkillState> {
+        if (focus.isEmpty()) return states
+        val known = states.filter { it.tag in focus }
+        val unread = focus.filterNot { tag -> states.any { it.tag == tag } }
+        return known + unread.sortedBy { it.toString() }.map { fresh(it, nowEpochMillis) }
+    }
+
     private fun suitable(
         summary: ScoreSummary,
         byTag: Map<SkillTag, SkillState>,
@@ -124,7 +136,7 @@ public class SpacedPracticeScheduler(
             key = KeySignature.C,
             time = TimeSignature.FourFour,
             bars = EXERCISE_BARS,
-            range = mapOf(Staff.Upper to onTheStaff(Clef.Treble)),
+            range = mapOf(Staff.Upper to staffMidiRange(Clef.Treble, KeySignature.C, WHOLE_STAFF_STEPS)),
             symbols = setOf(NoteSymbol.Quarter, NoteSymbol.Half),
             maxDots = 0,
             allowTuplets = false,
@@ -137,14 +149,14 @@ public class SpacedPracticeScheduler(
 }
 
 /** Nothing generated for a mono input may need two hands at once — its judge would refuse it. */
-private fun DifficultySpec.playableBy(input: Polyphony): DifficultySpec =
+internal fun DifficultySpec.playableBy(input: Polyphony): DifficultySpec =
     if (input == Polyphony.Mono) copy(bothHandsActive = false) else this
 
-private fun fresh(tag: SkillTag, nowEpochMillis: Long): SkillState =
+internal fun fresh(tag: SkillTag, nowEpochMillis: Long): SkillState =
     SkillState(tag = tag, strength = 0.0, dueAtEpochMillis = nowEpochMillis, attempts = 0, lapses = 0)
 
 private fun folded(state: SkillState, outcome: SkillOutcome, nowEpochMillis: Long): SkillState {
-    val clean = outcome.accuracy >= CLEAN_ACCURACY_THRESHOLD
+    val clean = outcome.isClean
     val repetition = if (clean) state.repetition + 1 else 0
     val strength = if (clean) {
         state.strength + (1.0 - state.strength) * STRENGTH_GROWTH
@@ -168,13 +180,4 @@ private fun folded(state: SkillState, outcome: SkillOutcome, nowEpochMillis: Lon
 private fun fundamentalSkillOf(spec: DifficultySpec): SkillTag {
     val staff = spec.staves.first()
     return SkillTag.ClefRegion(spec.clefs[staff] ?: Clef.Treble, PitchBand.MiddleStaff)
-}
-
-private fun onTheStaff(clef: Clef): ClosedRange<Midi> {
-    val sounding = (0..StaffGeometry.TOP_STEP).map { step ->
-        StaffGeometry.soundingNumber(
-            StaffGeometry.pitchAt(StaffGeometry.diatonicIndexAt(clef, step), KeySignature.C),
-        )
-    }
-    return Midi(sounding.min().coerceIn(Midi.MIN, Midi.MAX))..Midi(sounding.max().coerceIn(Midi.MIN, Midi.MAX))
 }

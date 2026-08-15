@@ -101,6 +101,28 @@ public data class SettingsEntity(
     }
 }
 
+/**
+ * When a stage first happened. There is no "current stage" column on purpose: where Dewi stands
+ * is derived from the skill states — see `.claude/CODE-NOTES.md`.
+ */
+@Entity(tableName = "stage_progress")
+public data class StageProgressEntity(
+    @PrimaryKey val stageNumber: Int,
+    val firstReachedAtEpochMillis: Long,
+    val firstPassedAtEpochMillis: Long?,
+)
+
+/** One placement read that happened. It seeded the skill states; see `.claude/CODE-NOTES.md`. */
+@Entity(tableName = "placement_reads")
+public data class PlacementReadEntity(
+    val takenAtEpochMillis: Long,
+    val outcomeKind: String,
+    val probesTaken: Int,
+    val seededSkills: Int,
+    val summary: String,
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+)
+
 /** Latency is per audio route because a headset and a speaker are not the same path. */
 @Entity(tableName = "route_latency")
 public data class AudioRouteLatencyEntity(
