@@ -1,0 +1,74 @@
+package com.dewijones92.primavista.score
+
+/**
+ * A passage of a [Score], as a [Score].
+ *
+ * This is what makes real repertoire usable at all. A whole song contains every reading skill
+ * somewhere in it, so the curriculum can only ever grade it "harder than the last rung" — 596
+ * songs graded identically, which is one rung with a lot of pages rather than a ladder. Its opening
+ * eight bars, on the other hand, are a specific difficulty, and one piece can offer an easy passage
+ * and a hard one. See `.claude/CODE-NOTES.md`.
+ *
+ * The result is the same type as its parent, deliberately: an excerpt of Schubert, a whole Bach
+ * minuet and a generated drill are indistinguishable to the scrolling loop, the judge and the
+ * layout engine (CLAUDE.md, *The ladder problem*).
+ *
+ * @param fromIndex 0-based index into [Score.measures], matching [Measure.index].
+ */
+public fun Score.excerpt(fromIndex: Int, bars: Int): Score {
+    require(bars > 0) { "an excerpt of $bars bars is not a passage" }
+    require(fromIndex in measures.indices) {
+        "bar index $fromIndex is outside the ${measures.size} bars of ${id.value}"
+    }
+    val window = measures.subList(fromIndex, minOf(fromIndex + bars, measures.size))
+    val from = window.first().start
+    val until = window.last().let { it.start + it.time.measureTicks }
+    // An event that starts inside the window is kept whole, even if it rings past the last
+    // barline: clipping it would produce a duration nobody could notate.
+    val kept = events.filter { it.onset >= from && it.onset < until }
+    val firstBar = window.first().number
+    val lastBar = window.last().number
+    return copy(
+        id = ScoreId("${id.value}$SEPARATOR$firstBar$RANGE$lastBar"),
+        title = "$title (bars $firstBar$EN_DASH$lastBar)",
+        measures = window.mapIndexed { index, measure -> measure.copy(index = index, start = measure.start - from) },
+        events = kept.map { it.rebased(from, hasTieInto(kept, it)) },
+    )
+}
+
+/**
+ * Every window of [bars] bars, stepping by [step]. Overlapping windows are allowed and useful: the
+ * hard bar of a piece is worth reading both as an opening and as a continuation.
+ */
+public fun Score.passages(bars: Int, step: Int = bars): List<Score> {
+    require(step > 0) { "a step of $step never advances" }
+    return (measures.indices step step)
+        .filter { it + bars <= measures.size }
+        .map { excerpt(it, bars) }
+}
+
+/**
+ * Whether the note this one is tied from survived the cut. If it did not, the tie has no partner
+ * and the note is now attacked — leaving the flag set would hide it from the judge entirely
+ * (see [Score.attackedNotes]).
+ */
+private fun hasTieInto(kept: List<ScoreEvent>, event: ScoreEvent): Boolean {
+    if (event !is Note || !event.tiedFromPrevious) return false
+    return kept.any { earlier ->
+        earlier is Note &&
+            earlier.tiedToNext &&
+            earlier.endsAt == event.onset &&
+            earlier.pitch == event.pitch &&
+            earlier.staff == event.staff &&
+            earlier.voice == event.voice
+    }
+}
+
+private fun ScoreEvent.rebased(from: Ticks, tiedFromPrevious: Boolean): ScoreEvent = when (this) {
+    is Note -> copy(onset = onset - from, tiedFromPrevious = tiedFromPrevious)
+    is Rest -> copy(onset = onset - from)
+}
+
+private const val SEPARATOR = "#"
+private const val RANGE = "-"
+private const val EN_DASH = "–"

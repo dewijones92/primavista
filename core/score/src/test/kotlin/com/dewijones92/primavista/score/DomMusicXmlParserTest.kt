@@ -150,7 +150,7 @@ class DomMusicXmlParserTest {
         assertEquals(1, parsed.score.notes.size)
         val part = parsed.dropped.single { it.element == "part" }
         assertEquals(null, part.measure)
-        assertTrue(part.detail.contains("first of 2"))
+        assertEquals("read P1; not read: P2", part.detail)
     }
 
     @Test

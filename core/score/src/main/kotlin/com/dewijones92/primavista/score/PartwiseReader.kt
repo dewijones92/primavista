@@ -22,7 +22,11 @@ private fun tempoOf(sound: Element?): Int? = sound?.attr("tempo")?.toDoubleOrNul
  * Reads one `<part>` of a `score-partwise` document, in document order, keeping the running
  * attribute state a MusicXML part implies.
  */
-internal class PartwiseReader(private val sourceName: String, private val licence: String) {
+internal class PartwiseReader(
+    private val sourceName: String,
+    private val licence: String,
+    private val part: PartChoice = PartChoice.First,
+) {
     private val dropped = mutableListOf<Dropped>()
     private val events = mutableListOf<ScoreEvent>()
     private val measures = mutableListOf<Measure>()
@@ -48,10 +52,13 @@ internal class PartwiseReader(private val sourceName: String, private val licenc
             .forEach { drop(it.tagName, "not read: ${it.summary()}", at = null) }
         val parts = root.elements("part")
         if (parts.isEmpty()) return MusicXmlResult.Failed("no <part> in <score-partwise>")
+        val chosen = PartSelection.choose(parts, part)
+            ?: return MusicXmlResult.Failed(PartSelection.describeMissing(parts, part))
         if (parts.size > 1) {
-            drop("part", "only the first of ${parts.size} parts is read", at = null)
+            val others = parts.filter { it !== chosen }.joinToString(transform = PartSelection::nameOf)
+            drop("part", "read ${PartSelection.nameOf(chosen)}; not read: $others", at = null)
         }
-        readPart(parts.first())
+        readPart(chosen)
         return MusicXmlResult.Parsed(buildScore(title, composer), dropped.toList())
     }
 

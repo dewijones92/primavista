@@ -2657,3 +2657,71 @@ Agents implementing a module append their own `##` section and never rewrite ano
   and leaves her reacting at the end, the behaviour the brief already blesses as legitimate. Re-run
   the same A/B on the phone before changing it; do not decide it from the emulator numbers above.
 
+
+## core/score/src/main/kotlin/com/dewijones92/primavista/score/Admission.kt
+
+- **Why `admits` exists at all, and why it is not built on `SkillTag`.** The obvious way to place a
+  real piece on the ladder is to compare the skills it demands against the skills a stage teaches:
+  `skillsOf(score) ⊆ curriculum.skillsThrough(stage)`. That does not work, and the reason is worth
+  keeping. A `Stage.skills` set is a **teaching claim** — "this rung introduces the bass clef" —
+  not an enumeration of everything material at that rung may contain. No stage lists
+  `Leap(semitones=5)` or `Accidental(Natural)`, because the generator's `DifficultySpec` governs
+  those, so the subset test rejects every bar of music ever written. Measured on the OpenScore
+  Lieder corpus: **8,744 of 8,798 passages were unplaceable that way**, and the 54 that placed were
+  windows containing nothing but rests. The `DifficultySpec` states the dials exactly, so it is what
+  the check reads.
+
+- **Three dials are deliberately not checked, and each exclusion cost a measurement.** *Time
+  signature*: a spec pins one because a generator must write in something, but no `SkillTag`
+  models metre, and refusing 3/4 at a rung whose spec says 4/4 accounted for 50,712 refusals — a
+  difficulty this ladder never claimed to teach. *Exact key*: a spec names one key; a rung reads
+  signatures **up to a size**, so the check is on `accidentalCount`. *Bars and tempo*: decisions
+  made when practising, not properties of the music.
+
+- **The accidental check must ask the key, not the note.** The first version compared
+  `note.pitch.alter` against `spec.allowedAlterations` and refused every exercise the generator
+  wrote in G major, because an F♯ there is `Alter.Sharp` on the pitch while being no accidental at
+  all on the page. `printedAccidental` asks `KeySignatureAlterations.impliedAlter` — the same
+  function `DerivedScoreSkills` uses — so the two can never disagree about what a reader sees. The
+  property test `every exercise a spec generates is admitted by that spec` is what caught it.
+
+## core/score/src/main/kotlin/com/dewijones92/primavista/score/Excerpt.kt
+
+- **Why a passage type had to exist before repertoire was worth shipping.** Graded whole, all 1,353
+  readable Lieder songs land in one bucket ("harder than the last rung"), because a whole song
+  contains every reading skill somewhere in it. That is one rung with a lot of pages, not a ladder.
+  Windowed, the same songs place across stages 6 to 10 — and **window length is itself difficulty**:
+  735 passages placed at four bars, 140 at eight, 17 at sixteen. That measurement is why
+  `Screener.DEFAULT_PASSAGE_BARS` grades at several lengths rather than picking one.
+
+- **A note that starts inside the window is kept whole even if it rings past the last barline.**
+  Clipping it would produce a duration nobody could notate, and the layout engine draws what the
+  `Duration` says.
+
+- **`hasTieInto` looks for the surviving partner rather than clearing every tie.** A note tied from
+  a predecessor that the cut removed is now attacked, and leaving `tiedFromPrevious` set would hide
+  it from `Score.attackedNotes` — so the judge would never expect it and never score it. A note
+  whose partner is still inside the window keeps its tie, which is why the check matches on pitch,
+  staff, voice and end tick rather than simply blanking the flag.
+
+## tools/repertoire
+
+- **The import tool is built on the app's own parser, grader and curriculum on purpose.** A piece it
+  accepts is one the phone will read identically; a tool-side copy of the screening would make
+  "imports cleanly" a claim about the tool rather than about the app. It is a separate Gradle module
+  outside `:app`'s dependency graph, so none of it ships.
+
+- **`DropKind` classifies by "does this leave a hole", not by "was something lost".** The app draws
+  from the parsed score, so anything the parser dropped is absent from the page *and* from the
+  expectation, and the two still agree. What matters is whether the remainder is coherent music.
+  Checked rather than assumed: `readNoteElement` returns the file's own `occupied` duration even for
+  notes it refuses, so no drop ever shifts the timeline. Reclassifying grace notes, cue notes,
+  `<notehead>` and plain repeats as cosmetic on that basis took the corpus from 41% to 93% usable.
+  `<ending>` stays material — playing a first-time bar straight into a second-time bar is a passage
+  that never existed.
+
+- **The corpus is a sparse clone, not a vendored copy.** `~/code/primavista-corpus-src/Lieder` at
+  commit `6b2dc542ce2e8aa4b78c8ee62103b210efc07015` (2026-04-07), 1,462 `.mxl` files, 18.6 MB. Only
+  the 25 selected files are committed here, byte for byte as published, so provenance survives and
+  the file the app parses is the file that was screened. Re-run with
+  `./gradlew :tools:repertoire:run --args="report --corpus <dir> --commit <sha>"`.

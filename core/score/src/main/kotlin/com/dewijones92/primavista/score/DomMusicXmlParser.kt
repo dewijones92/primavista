@@ -19,7 +19,12 @@ private val musicXmlSuffixes = listOf(".musicxml", ".xml")
  */
 public class DomMusicXmlParser(private val diag: Diag = NoOpDiag) : MusicXmlParser {
 
-    override fun parse(xml: String, sourceName: String, licence: String): MusicXmlResult {
+    override fun parse(
+        xml: String,
+        sourceName: String,
+        licence: String,
+        part: PartChoice,
+    ): MusicXmlResult {
         val document = runCatching { parseXmlDocument(xml) }.getOrElse { failure ->
             return failed(sourceName, "malformed XML: ${failure.message ?: failure::class.simpleName}")
         }
@@ -28,16 +33,21 @@ public class DomMusicXmlParser(private val diag: Diag = NoOpDiag) : MusicXmlPars
         if (root.tagName != ROOT_ELEMENT) {
             return failed(sourceName, "expected <$ROOT_ELEMENT>, found <${root.tagName}>")
         }
-        return reported(sourceName, PartwiseReader(sourceName, licence).read(root))
+        return reported(sourceName, PartwiseReader(sourceName, licence, part).read(root))
     }
 
-    override fun parseCompressed(bytes: ByteArray, sourceName: String, licence: String): MusicXmlResult {
+    override fun parseCompressed(
+        bytes: ByteArray,
+        sourceName: String,
+        licence: String,
+        part: PartChoice,
+    ): MusicXmlResult {
         val entries = runCatching { zipEntriesOf(bytes) }.getOrElse { failure ->
             return failed(sourceName, "unreadable .mxl container: ${failure.message ?: failure::class.simpleName}")
         }
         val root = rootFileOf(entries)
             ?: return failed(sourceName, "no MusicXML root file inside the .mxl container")
-        return parse(root.toString(Charsets.UTF_8), sourceName, licence)
+        return parse(root.toString(Charsets.UTF_8), sourceName, licence, part)
     }
 
     private fun failed(sourceName: String, reason: String): MusicXmlResult.Failed {

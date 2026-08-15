@@ -4,20 +4,37 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+private const val MIN_IMPORTED_BARS = 8
+
 class CorpusTest {
 
     private val parser = DomMusicXmlParser()
     private val skills = DerivedScoreSkills()
 
     @Test
-    fun `every shipped piece parses with nothing dropped`() {
-        assertEquals(3, Corpus.pieces.size)
+    fun `every shipped piece parses, losing nothing a reader would notice`() {
         for (piece in Corpus.pieces) {
             val result = Corpus.parse(piece, parser)
             assertTrue("${piece.title}: $result", result is MusicXmlResult.Parsed)
             val parsed = result as MusicXmlResult.Parsed
+            assertEquals("${piece.title} lost music", emptyList<Dropped>(), parsed.material)
+        }
+    }
+
+    @Test
+    fun `the hand-authored openings parse with nothing dropped at all`() {
+        for (piece in handAuthored) {
+            val parsed = Corpus.parse(piece, parser) as MusicXmlResult.Parsed
             assertTrue("${piece.title} dropped ${parsed.dropped}", parsed.isClean)
         }
+    }
+
+    @Test
+    fun `both manifests are read, and the imported repertoire is the larger half`() {
+        assertEquals(3, handAuthored.size)
+        assertTrue("imported ${imported.size}", imported.size >= handAuthored.size)
+        assertTrue(imported.all { it.part == PartChoice.Keyboard })
+        assertTrue(handAuthored.all { it.part == PartChoice.First })
     }
 
     @Test
@@ -33,11 +50,20 @@ class CorpusTest {
     }
 
     @Test
-    fun `every bar of every shipped piece adds up exactly`() {
-        for (piece in Corpus.pieces) {
+    fun `every bar of every hand-authored opening adds up exactly`() {
+        for (piece in handAuthored) {
             val score = scoreOf(piece)
             assertEquals("${piece.title} bars", 4, score.measures.size)
             assertBarsAddUp(piece.title, score)
+        }
+    }
+
+    @Test
+    fun `every imported piece is long enough to be worth reading, and offers a passage`() {
+        for (piece in imported) {
+            val score = scoreOf(piece)
+            assertTrue("${piece.title} has ${score.measures.size} bars", score.measures.size >= MIN_IMPORTED_BARS)
+            assertTrue("${piece.title} has no four-bar passage", score.passages(bars = 4).isNotEmpty())
         }
     }
 
@@ -78,7 +104,7 @@ class CorpusTest {
     fun `every piece records where it came from and under what licence`() {
         for (piece in Corpus.pieces) {
             assertTrue(piece.title, piece.source.isNotBlank())
-            assertTrue(piece.title, piece.licence.contains("public domain"))
+            assertTrue(piece.title, piece.licence.contains("public domain") || piece.licence.contains("CC0"))
             assertTrue(piece.title, piece.composer.isNotBlank())
         }
         assertEquals(Corpus.pieces.size, Corpus.pieces.map { it.id }.toSet().size)
@@ -104,6 +130,9 @@ class CorpusTest {
             assertTrue("${piece.title} bar $bar", bar != null && bar in 1..score.measures.size)
         }
     }
+
+    private val handAuthored get() = Corpus.pieces.filter { it.part == PartChoice.First }
+    private val imported get() = Corpus.pieces.filter { it.part == PartChoice.Keyboard }
 
     private fun scoreOf(piece: CorpusPiece): Score =
         (Corpus.parse(piece, parser) as MusicXmlResult.Parsed).score

@@ -38,3 +38,6 @@ include(":core:practice")
 include(":core:score")
 include(":lib:common")
 include(":lib:pitch")
+
+// Author-side tooling. Not in :app's dependency graph, so none of it ships.
+include(":tools:repertoire")

@@ -75,18 +75,53 @@ class TargetedDrillTest {
     }
 
     @Test
-    fun `the sweep covers every skill this app can derive from its own material`() {
+    fun `the sweep covers every skill this app can generate`() {
         val fromDrills = drillBases.values.flatMap { base ->
             (1L..DERIVATION_SEEDS).flatMap { skills.skillsOf(generator.generate(it, base)) }
         }
+
+        assertEquals(emptySet<SkillTag>(), fromDrills.toSet() - everyTargetableSkill().toSet())
+    }
+
+    /**
+     * Real repertoire asks for more than a generator should ever write — a two-octave leap, eight
+     * leger lines, a septuplet — and that is the point of shipping it. What must not happen is a
+     * *new kind* of skill appearing unnoticed, so the excess is characterised rather than ignored.
+     */
+    @Test
+    fun `the shipped repertoire exceeds the generator only in ways already understood`() {
         val fromCorpus = Corpus.pieces.flatMap { piece ->
             skills.skillsOf((Corpus.parse(piece, DomMusicXmlParser()) as MusicXmlResult.Parsed).score)
         }
 
-        assertEquals(
-            emptySet<SkillTag>(),
-            (fromDrills + fromCorpus).toSet() - everyTargetableSkill().toSet(),
-        )
+        val unexplained = (fromCorpus.toSet() - everyTargetableSkill().toSet()).filterNot { skill ->
+            when (skill) {
+                is SkillTag.Leap -> skill.semitones > OCTAVE_SEMITONES
+                is SkillTag.LegerLines -> skill.count > LEGER_LINE_SWEEP
+                is SkillTag.RhythmFigure -> skill.tupletNumerator > 1 || skill.dots > 0
+                else -> false
+            }
+        }
+        assertEquals(emptyList<SkillTag>(), unexplained)
+    }
+
+    /**
+     * The scheduler will hand [ExerciseGenerator.specTargeting] whatever the corpus made weak, so
+     * every skill real music can produce has to yield a spec that still writes complete bars — the
+     * failure mode CLAUDE.md records, where a drill silently cannot contain the thing it drills.
+     */
+    @Test
+    fun `a drill aimed at anything the shipped repertoire can teach still fills its bars`() {
+        val fromCorpus = Corpus.pieces.flatMap { piece ->
+            skills.skillsOf((Corpus.parse(piece, DomMusicXmlParser()) as MusicXmlResult.Parsed).score)
+        }.toSet()
+
+        for ((name, base) in drillBases) {
+            for (target in fromCorpus) {
+                val targeted = generator.specTargeting(target, base)
+                assertBarsAddUp(targeted, generator.generate(1L, targeted), "$name aimed at $target")
+            }
+        }
     }
 
     @Test

@@ -15,10 +15,45 @@ package com.dewijones92.primavista.score
  */
 public interface MusicXmlParser {
     /** Parses an uncompressed `.musicxml` / `.xml` document. */
-    public fun parse(xml: String, sourceName: String, licence: String): MusicXmlResult
+    public fun parse(
+        xml: String,
+        sourceName: String,
+        licence: String,
+        part: PartChoice = PartChoice.First,
+    ): MusicXmlResult
 
     /** Parses a compressed `.mxl` container, resolving its root file from META-INF/container.xml. */
-    public fun parseCompressed(bytes: ByteArray, sourceName: String, licence: String): MusicXmlResult
+    public fun parseCompressed(
+        bytes: ByteArray,
+        sourceName: String,
+        licence: String,
+        part: PartChoice = PartChoice.First,
+    ): MusicXmlResult
+}
+
+/**
+ * Which `<part>` of a multi-part score to read. This app reads one keyboard part at a time, so a
+ * score written for more than one performer has to be told which performer it is.
+ *
+ * It exists because real repertoire is not solo piano. A song is a voice part on one staff plus a
+ * piano part on two, and reading "the first part" gets you the vocal line — a single melody, when
+ * the thing worth sight-reading is the accompaniment underneath it.
+ */
+public sealed interface PartChoice {
+    /** The first part in the document. Right for a solo piece, wrong for anything with a singer. */
+    public data object First : PartChoice
+
+    public data class ById(val id: String) : PartChoice
+
+    /**
+     * The first part written on two or more staves.
+     *
+     * Two staves **is** the definition of keyboard writing — a brace, a right hand and a left hand —
+     * so this needs no instrument-name matching and survives a score that calls the part "Pianoforte",
+     * "Klavier" or nothing at all. Names in this corpus are inconsistent and often not in English;
+     * the staff count is a fact about the notation.
+     */
+    public data object Keyboard : PartChoice
 }
 
 public sealed interface MusicXmlResult {

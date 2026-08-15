@@ -11,51 +11,94 @@ public data class CorpusPiece(
     val source: String,
     val licence: String,
     val resourcePath: String,
+    val part: PartChoice,
 )
 
 /**
- * The hand-authored starter repertoire. Small on purpose — the generator covers the volume, and
- * every piece here is one Dewi can actually recognise, which is what makes progress legible.
+ * The repertoire shipped with the app: a few hand-authored openings everyone knows, plus real
+ * nineteenth-century songs imported from the OpenScore Lieder Corpus by `tools/repertoire`.
+ *
+ * Read from manifests rather than written out in Kotlin, so an import is a data change: the tool
+ * rewrites its own manifest and touches no code. Difficulty is deliberately **not** in the file —
+ * the app derives it from the score with the same grader the import used, and a stored second copy
+ * of a derivation is the duplication this repo has already been bitten by twice (CLAUDE.md).
  */
 public object Corpus {
-    private const val ENGRAVING_LICENCE =
-        "Engraving hand-authored for this repository and dedicated to the public domain (CC0)."
+    private const val HAND_AUTHORED = "/corpus/manifest.tsv"
+    private const val IMPORTED = "/corpus/lieder/manifest.tsv"
+    private const val COMPRESSED_SUFFIX = ".mxl"
+    private const val COMMENT = '#'
+    private const val FIELDS = 7
+    private const val ID_PREFIX = "id:"
 
-    public val pieces: List<CorpusPiece> = listOf(
-        CorpusPiece(
-            id = ScoreId("corpus-minuet-in-g"),
-            title = "Minuet in G (BWV Anh. 114) — opening",
-            composer = "Christian Petzold",
-            source = "Notebook for Anna Magdalena Bach (1725); composer died 1733, so the work is public domain.",
-            licence = ENGRAVING_LICENCE,
-            resourcePath = "/corpus/minuet-in-g.musicxml",
-        ),
-        CorpusPiece(
-            id = ScoreId("corpus-ode-to-joy"),
-            title = "Ode to Joy (Symphony No. 9) — theme",
-            composer = "Ludwig van Beethoven",
-            source = "Symphony No. 9, finale (1824); composer died 1827, so the work is public domain.",
-            licence = ENGRAVING_LICENCE,
-            resourcePath = "/corpus/ode-to-joy.musicxml",
-        ),
-        CorpusPiece(
-            id = ScoreId("corpus-ah-vous-dirai-je-maman"),
-            title = "Ah, vous dirai-je, Maman — theme",
-            composer = "Traditional (theme of Mozart's K. 265)",
-            source = "French folk melody first printed in 1761; anonymous and long out of copyright.",
-            licence = ENGRAVING_LICENCE,
-            resourcePath = "/corpus/ah-vous-dirai-je-maman.musicxml",
-        ),
-    )
+    // Column order of the manifests, which the import tool writes and this reads.
+    private const val ID_FIELD = 0
+    private const val TITLE_FIELD = 1
+    private const val COMPOSER_FIELD = 2
+    private const val SOURCE_FIELD = 3
+    private const val LICENCE_FIELD = 4
+    private const val RESOURCE_FIELD = 5
+    private const val PART_FIELD = 6
 
-    public fun read(piece: CorpusPiece): String {
+    public val pieces: List<CorpusPiece> by lazy { listOf(HAND_AUTHORED, IMPORTED).flatMap(::manifestAt) }
+
+    public fun read(piece: CorpusPiece): ByteArray {
         val stream = requireNotNull(Corpus::class.java.getResourceAsStream(piece.resourcePath)) {
             "corpus resource ${piece.resourcePath} is missing from the build"
         }
-        return stream.use { it.readBytes().toString(Charsets.UTF_8) }
+        return stream.use { it.readBytes() }
     }
 
-    /** The parsed [Score] is keyed by [CorpusPiece.id], not its title. See `.claude/CODE-NOTES.md`. */
-    public fun parse(piece: CorpusPiece, parser: MusicXmlParser): MusicXmlResult =
-        parser.parse(read(piece), piece.id.value, piece.licence)
+    /**
+     * The parsed [Score] is keyed by [CorpusPiece.id], not its title (see `.claude/CODE-NOTES.md`),
+     * and takes the manifest's title and composer over the file's. Real engravings are inconsistent
+     * about both — a song's `<work-title>` is often the collection it sits in, or absent — whereas
+     * the manifest names one song.
+     */
+    public fun parse(piece: CorpusPiece, parser: MusicXmlParser): MusicXmlResult {
+        val bytes = read(piece)
+        val result = if (piece.resourcePath.endsWith(COMPRESSED_SUFFIX)) {
+            parser.parseCompressed(bytes, piece.id.value, piece.licence, piece.part)
+        } else {
+            parser.parse(bytes.toString(Charsets.UTF_8), piece.id.value, piece.licence, piece.part)
+        }
+        return when (result) {
+            is MusicXmlResult.Failed -> result
+            is MusicXmlResult.Parsed ->
+                result.copy(score = result.score.copy(title = piece.title, composer = piece.composer))
+        }
+    }
+
+    private fun manifestAt(path: String): List<CorpusPiece> {
+        val stream = requireNotNull(Corpus::class.java.getResourceAsStream(path)) {
+            "corpus manifest $path is missing from the build"
+        }
+        return stream.use { it.readBytes() }
+            .toString(Charsets.UTF_8)
+            .lineSequence()
+            .filter { it.isNotBlank() && it.first() != COMMENT }
+            .map { pieceFrom(it, path) }
+            .toList()
+    }
+
+    private fun pieceFrom(line: String, manifest: String): CorpusPiece {
+        val fields = line.split('\t')
+        require(fields.size == FIELDS) { "$manifest: expected $FIELDS tab-separated fields, found ${fields.size}" }
+        return CorpusPiece(
+            id = ScoreId(fields[ID_FIELD]),
+            title = fields[TITLE_FIELD],
+            composer = fields[COMPOSER_FIELD],
+            source = fields[SOURCE_FIELD],
+            licence = fields[LICENCE_FIELD],
+            resourcePath = fields[RESOURCE_FIELD],
+            part = partFrom(fields[PART_FIELD], manifest),
+        )
+    }
+
+    private fun partFrom(field: String, manifest: String): PartChoice = when {
+        field == "first" -> PartChoice.First
+        field == "keyboard" -> PartChoice.Keyboard
+        field.startsWith(ID_PREFIX) -> PartChoice.ById(field.removePrefix(ID_PREFIX))
+        else -> error("$manifest: '$field' is not a part choice")
+    }
 }
