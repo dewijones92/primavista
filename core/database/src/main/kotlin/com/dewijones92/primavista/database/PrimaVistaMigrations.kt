@@ -38,7 +38,17 @@ public object PrimaVistaMigrations {
         }
     }
 
-    public val ALL: List<Migration> = listOf(AddSkillRepetition, AddJourney)
+    /**
+     * Reading ahead. Existing rows default to 0, which is off — the same behaviour they had, since
+     * a preference nobody set should not start covering the music.
+     */
+    public val AddReadingLead: Migration = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE settings ADD COLUMN readingLeadBeats INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
+    public val ALL: List<Migration> = listOf(AddSkillRepetition, AddJourney, AddReadingLead)
 
     /**
      * Stored versions that cannot reach [target] by any chain of [migrations]. Empty is the

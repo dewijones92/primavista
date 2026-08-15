@@ -7,6 +7,7 @@ internal fun PracticeSettings.toEntity(): SettingsEntity = SettingsEntity(
     metronomeOn = metronomeOn,
     listenFirstOn = listenFirstOn,
     inputLabel = inputLabel,
+    readingLeadBeats = readingLeadBeats,
 )
 
 internal fun SettingsEntity.toSettings(): PracticeSettings = PracticeSettings(
@@ -14,6 +15,7 @@ internal fun SettingsEntity.toSettings(): PracticeSettings = PracticeSettings(
     metronomeOn = metronomeOn,
     listenFirstOn = listenFirstOn,
     inputLabel = inputLabel,
+    readingLeadBeats = readingLeadBeats,
 )
 
 internal fun AudioRouteLatencyEntity.toLatency(): InputLatency = InputLatency(millis, provenance)

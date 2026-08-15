@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Hearing
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -37,6 +38,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.dewijones92.primavista.di.InputMode
+import com.dewijones92.primavista.practice.ReadingLead
 import com.dewijones92.primavista.practice.TransportState
 
 /**
@@ -49,9 +51,9 @@ import com.dewijones92.primavista.practice.TransportState
 internal fun SetupPanel(
     state: PracticeUiState,
     setup: SessionSetup?,
-    onToggle: ((PracticeToggle) -> Unit)?,
+    onChange: ((PracticeChange) -> Unit)?,
 ) {
-    if (setup == null && onToggle == null) return
+    if (setup == null && onChange == null) return
     val stopped = state.transport != TransportState.Running &&
         state.transport != TransportState.CountingIn
     AnimatedVisibility(
@@ -74,7 +76,11 @@ internal fun SetupPanel(
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            SoundsAndActions(state, setup, onToggle)
+            SoundsAndActions(state, setup, onChange)
+            if (onChange != null) {
+                Spacer(Modifier.height(8.dp))
+                ReadAheadRow(state.readingLead) { onChange(PracticeChange.ReadAhead(it)) }
+            }
         }
     }
 }
@@ -83,16 +89,16 @@ internal fun SetupPanel(
 private fun SoundsAndActions(
     state: PracticeUiState,
     setup: SessionSetup?,
-    onToggle: ((PracticeToggle) -> Unit)?,
+    onChange: ((PracticeChange) -> Unit)?,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        if (onToggle != null) {
+        if (onChange != null) {
             ToggleChip("Click", Icons.Rounded.MusicNote, state.metronomeOn) {
-                onToggle(PracticeToggle.Metronome)
+                onChange(PracticeChange.Metronome)
             }
             Spacer(Modifier.width(6.dp))
             ToggleChip("Echo", Icons.AutoMirrored.Rounded.VolumeUp, state.echoOn) {
-                onToggle(PracticeToggle.Echo)
+                onChange(PracticeChange.Echo)
             }
         }
         Spacer(Modifier.weight(1f))
@@ -102,6 +108,49 @@ private fun SoundsAndActions(
             ActionButton(Icons.Rounded.AutoAwesome, "Try another", "next", setup.onNext)
         }
     }
+}
+
+/**
+ * The card over the music, as a dial rather than a toggle: a button cycling four states hides which
+ * one you are in, and this one changes how hard the next run is.
+ */
+@Composable
+private fun ReadAheadRow(current: ReadingLead, onChoose: (ReadingLead) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = Icons.Rounded.VisibilityOff,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(CHIP_ICON),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = "Read ahead",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(10.dp))
+        ReadingLead.choices.forEach { lead ->
+            FilterChip(
+                selected = lead == current,
+                onClick = { onChoose(lead) },
+                label = { Text(labelFor(lead), style = MaterialTheme.typography.labelMedium) },
+                shape = RoundedCornerShape(CHIP_CORNER),
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+                modifier = Modifier.testTag("lead-${lead.beats}"),
+            )
+            Spacer(Modifier.width(6.dp))
+        }
+    }
+}
+
+private fun labelFor(lead: ReadingLead): String = when (lead.beats) {
+    0 -> "Off"
+    1 -> "1 beat"
+    else -> "${lead.beats} beats"
 }
 
 @Composable

@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.dewijones92.primavista.common.Diag
 import com.dewijones92.primavista.common.NoOpDiag
 
-public const val DATABASE_VERSION: Int = 3
+public const val DATABASE_VERSION: Int = 4
 
 /**
  * What opening the practice history produced.

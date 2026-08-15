@@ -64,6 +64,8 @@ public data class PracticeSettings(
     val listenFirstOn: Boolean = false,
     /** [com.dewijones92.primavista.practice.AnswerSource.label] of the chosen input; null until chosen. */
     val inputLabel: String? = null,
+    /** [com.dewijones92.primavista.practice.ReadingLead] in beats; 0 is off, which is the default. */
+    val readingLeadBeats: Int = 0,
 ) {
     public companion object {
         public const val DEFAULT_TEMPO_BPM: Int = 72

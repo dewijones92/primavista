@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.dewijones92.primavista.audio.Metronome
 import com.dewijones92.primavista.audio.TonePlayer
 import com.dewijones92.primavista.common.Diag
+import com.dewijones92.primavista.database.PracticeSettings
 import com.dewijones92.primavista.database.SessionId
 import com.dewijones92.primavista.database.StoredSession
 import com.dewijones92.primavista.di.InputMode
@@ -20,6 +21,7 @@ import com.dewijones92.primavista.practice.Conductor
 import com.dewijones92.primavista.practice.JudgeState
 import com.dewijones92.primavista.practice.NoteJudgement
 import com.dewijones92.primavista.practice.PerformanceJudge
+import com.dewijones92.primavista.practice.ReadingLead
 import com.dewijones92.primavista.practice.RefusalReason
 import com.dewijones92.primavista.practice.SessionResult
 import com.dewijones92.primavista.practice.Stage
@@ -50,7 +52,20 @@ private const val NANOS_PER_MILLI = 1_000_000L
 /** What the screen is asking the session for. Named actions, so a report says which button ran. */
 public enum class PracticeIntent { Next, DrillWeakest, Again }
 
-public enum class PracticeToggle { Metronome, Echo }
+/**
+ * A session preference the reader changed mid-run.
+ *
+ * Sealed rather than an enum-plus-a-second-method because they are one thing — "this changed, apply
+ * it, remember it" — and the third one is not a toggle at all. Adding a fourth adds a case, not an
+ * entry point.
+ */
+public sealed interface PracticeChange {
+    public data object Metronome : PracticeChange
+
+    public data object Echo : PracticeChange
+
+    public data class ReadAhead(val lead: ReadingLead) : PracticeChange
+}
 
 /** Which rung of [com.dewijones92.primavista.practice.Curriculum] Dewi is on. Null when unknown. */
 public typealias StageSource = suspend () -> Stage?
@@ -79,6 +94,16 @@ public data class PracticeUiState(
     val metronomeOn: Boolean = true,
     /** Play the written note after a wrong one. Muted for the mic, which would hear it and judge it. */
     val echoOn: Boolean = true,
+    /** How far ahead of the playhead the page is covered. See [ReadingLead]. */
+    val readingLead: ReadingLead = ReadingLead.Off,
+    /**
+     * Where the reading-ahead card sits, in staff spaces, or null when it is off.
+     *
+     * Carried on the state rather than computed by the screen: it is `xOf(position + lead)`, and
+     * `xOf` is the layout engine's answer. A screen working it out from pixels would be a second
+     * layout engine, which is the mistake `StaffCanvas` exists to avoid.
+     */
+    val coverX: StaffSpaces? = null,
     /** The skills this piece was chosen to drill, so the screen can say why it is on. */
     val targeting: Set<SkillTag> = emptySet(),
     val choiceSummary: String = "",
@@ -219,22 +244,25 @@ public class PracticeViewModel(
     }
 
     /** The metronome is a stored preference and is written back here; the echo is per-session only. */
-    public fun toggle(feature: PracticeToggle) {
+    /**
+     * Applies a changed preference and remembers the ones worth keeping. Echo is deliberately not
+     * persisted: it is muted for the mic by the session itself, so a stored value would fight it.
+     */
+    public fun change(change: PracticeChange) {
         val current = _state.value
-        val next = when (feature) {
-            PracticeToggle.Metronome -> current.copy(metronomeOn = !current.metronomeOn)
-            PracticeToggle.Echo -> current.copy(echoOn = !current.echoOn)
+        val next = when (change) {
+            PracticeChange.Metronome -> current.copy(metronomeOn = !current.metronomeOn)
+            PracticeChange.Echo -> current.copy(echoOn = !current.echoOn)
+            is PracticeChange.ReadAhead -> current.copy(readingLead = change.lead, coverX = null)
         }
         wiring.metronome.enabled = next.metronomeOn
         diag.event(
             TAG,
-            "$feature toggled: metronome=${next.metronomeOn} echo=${next.echoOn} src=${next.inputLabel} " +
-                "saved=${feature == PracticeToggle.Metronome}",
+            "$change applied: metronome=${next.metronomeOn} echo=${next.echoOn} " +
+                "lead=${next.readingLead} src=${next.inputLabel}",
         )
         _state.value = next
-        if (feature == PracticeToggle.Metronome) {
-            viewModelScope.launch { wiring.preferences.remember { it.copy(metronomeOn = next.metronomeOn) } }
-        }
+        remembering(change, next)?.let { remember -> viewModelScope.launch { wiring.preferences.remember(remember) } }
     }
 
     /**
@@ -355,6 +383,7 @@ public class PracticeViewModel(
         _state.value = _state.value.copy(
             position = position,
             playheadX = wiring.layout.xOf(system, position),
+            coverX = readingCover(wiring, _state.value.readingLead, loaded, system, position),
             transport = conductor.state,
             countInBeatsRemaining = conductor.countInBeatsRemaining(),
         )
@@ -447,7 +476,8 @@ public class PracticeViewModel(
                 "capped=${conductor.tempoBpm < score.defaultTempoBpm}] " +
                 "metronome=$metronomeOn [stored=${stored.metronomeOn} micMutes=$micMutes] " +
                 "input=${input.name} [stored=${stored.inputLabel ?: "(unchosen)"}] " +
-                "listenFirst=${stored.listenFirstOn} [applies=$mayListenFirst]",
+                "listenFirst=${stored.listenFirstOn} [applies=$mayListenFirst] " +
+                "readingLead=${ReadingLead(stored.readingLeadBeats)}",
         )
         diag.event(
             TAG,
@@ -460,12 +490,14 @@ public class PracticeViewModel(
             val s = _state.value
             "transport=${s.transport} pos=${s.position.value} judged=${s.verdicts.size}/" +
                 "${s.score?.attackedNotes?.size ?: 0} extras=${s.extras} src=${s.inputLabel} " +
-                "metronome=${s.metronomeOn} echo=${s.echoOn} tempo=${s.tempoBpm}bpm"
+                "metronome=${s.metronomeOn} echo=${s.echoOn} tempo=${s.tempoBpm}bpm " +
+                "lead=${s.readingLead} coverX=${s.coverX?.value?.toInt()}"
         }
 
         _state.value = _state.value.copy(
             score = score, system = system, transport = conductor.state, position = Ticks.ZERO,
-            playheadX = StaffSpaces.ZERO, countInBeatsRemaining = 0, countInBeats = 0,
+            playheadX = StaffSpaces.ZERO, coverX = null, countInBeatsRemaining = 0, countInBeats = 0,
+            readingLead = ReadingLead(stored.readingLeadBeats),
             verdicts = emptyMap(), extras = 0,
             refusal = null, result = null, lastRun = null, inputLabel = source.label, input = input,
             tempoBpm = conductor.tempoBpm, metronomeOn = metronomeOn, echoOn = !micMutes,
@@ -697,3 +729,37 @@ private const val MIC_REVOKED =
 
 private const val MIC_MUTES =
     "PLAY IT is listening, so the metronome and note echo are off: the mic would hear them and score them as notes."
+
+/**
+ * Where the reading-ahead card sits, or null when it is off — nothing drawn rather than a cover
+ * parked at the far left.
+ *
+ * A free function because it is geometry, not session state: it asks [ReadingLead] for a musical
+ * position and the layout engine for the x of it, and owns neither.
+ */
+private fun readingCover(
+    wiring: PracticeWiring,
+    lead: ReadingLead,
+    score: Score?,
+    system: StaffSystem,
+    position: Ticks,
+): StaffSpaces? {
+    if (!lead.isOn) return null
+    val time = score?.measures?.firstOrNull()?.time ?: TimeSignature.FourFour
+    return wiring.layout.xOf(system, lead.coversUpTo(position, time))
+}
+
+/**
+ * What to persist for a change, or null for one that is only for this run.
+ *
+ * Echo is deliberately not stored: the session mutes it for the mic by itself, so a remembered
+ * value would fight that every time the input switched.
+ */
+private fun remembering(
+    change: PracticeChange,
+    next: PracticeUiState,
+): ((PracticeSettings) -> PracticeSettings)? = when (change) {
+    PracticeChange.Metronome -> { settings -> settings.copy(metronomeOn = next.metronomeOn) }
+    is PracticeChange.ReadAhead -> { settings -> settings.copy(readingLeadBeats = change.lead.beats) }
+    PracticeChange.Echo -> null
+}

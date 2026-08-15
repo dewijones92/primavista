@@ -2795,3 +2795,25 @@ Agents implementing a module append their own `##` section and never rewrite ano
 - **The codec change is additive on purpose.** `maxKey` is written but read with a default of the
   key's own size, so `VERSION` stays at 1 and a session stored before the split is still replayable
   from a report — the default is exactly what those rows meant.
+
+## core/practice/.../ReadingLead.kt
+
+- **A bar of lead blanks a phone.** The classic paper exercise is a card over the bar you are
+  playing, which is why `OneBar` exists — and on the api35 emulator it hides everything. The staff
+  zooms to fit `gutter + MIN_READ_AHEAD_SPACES`, which is roughly a bar and a half of a generated
+  exercise, so a cover four beats ahead of the playhead runs off the right edge and
+  `coerceAtMost(size.width)` paints the whole canvas. That is the drill working exactly as
+  specified on a screen too small to hold it. `choices` stops at two beats; `OneBar` is kept as a
+  tested value because a tablet may yet earn it. Seen at one beat: cover ends mid-staff with the
+  next half note clearly readable beyond it, which is the exercise.
+
+- **The cover is not clamped to the start of the piece, on purpose.** During the count-in the
+  Conductor's position is negative, so `coversUpTo` returns a position at or before bar one and
+  nothing is covered — the count-in is when you read the opening. Clamping to zero would hide bar
+  one before Dewi had ever seen it.
+
+- **`PracticeChange` replaced `PracticeToggle` because a dial is not a toggle.** The reading lead is
+  a four-state choice, and adding it as a second entry point on the view model would have meant
+  every future preference adding another. One sealed type, one `change(…)`, and `remembering(…)`
+  lifted out as a free function saying what is persisted — Echo deliberately is not, because the
+  session mutes it for the mic and a stored value would fight that.

@@ -27,6 +27,10 @@ import com.dewijones92.primavista.theme.LocalNotationColors
  *
  * [pinnedAt] asks for the clef, key and time signature in force at that musical position to be held
  * still at the left while everything else scrolls; null scrolls the furniture away with the music.
+ *
+ * [coverX] is the reading-ahead card: everything at or behind it is covered. It is drawn over the
+ * music but under the pinned furniture, so the key and time signature stay readable — you are being
+ * asked to read ahead, not to remember what key you are in.
  */
 @Composable
 public fun StaffCanvas(
@@ -37,6 +41,7 @@ public fun StaffCanvas(
     scrollX: StaffSpaces = StaffSpaces.ZERO,
     playheadX: StaffSpaces? = null,
     pinnedAt: Ticks? = null,
+    coverX: StaffSpaces? = null,
     appearance: (LaidOutNote) -> NoteAppearance = { NoteAppearance.PLAIN },
 ) {
     val colors = LocalNotationColors.current
@@ -60,6 +65,7 @@ public fun StaffCanvas(
                 system.notes.forEach { drawNote(paint, it, appearance(it)) }
             }
         }
+        coverX?.let { drawReadingCover((it - scrollX).value.toFloat() * paint.space, paint) }
         group?.let {
             drawPinnedBackdrop(it, paint)
             translate(top = centring) { drawPinnedContent(it, system.lines, paint) }
@@ -80,6 +86,7 @@ public fun FittedStaffCanvas(
     scrollX: StaffSpaces = StaffSpaces.ZERO,
     playheadX: StaffSpaces? = null,
     pinnedAt: Ticks? = null,
+    coverX: StaffSpaces? = null,
     appearance: (LaidOutNote) -> NoteAppearance = { NoteAppearance.PLAIN },
 ) {
     BoxWithConstraints(modifier) {
@@ -91,6 +98,7 @@ public fun FittedStaffCanvas(
             scrollX = scrollX,
             playheadX = playheadX,
             pinnedAt = pinnedAt,
+            coverX = coverX,
             appearance = appearance,
         )
     }

@@ -36,12 +36,12 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 | `:core:score` | 139 | — | the model, the MusicXML subset, the generator's determinism, `Score.polyphony` (spec I3's predicate), part selection, passages, and whether a spec admits a piece |
 | `:core:audio` | 88 | 22 | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM; the AudioTrack and AudioRecord bridges on a device |
 | `:core:notation` | 79 | — | staff geometry for both clefs, stems from font anchors, beams, leger lines, `xOf` agreeing with note placement (spec I1) |
-| `:core:practice` | 116 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5) and what a piece offers to read |
+| `:core:practice` | 125 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5), what a piece offers to read and how far ahead the page is covered |
 | `:lib:pitch` | 60 | — | YIN against synthesised tones, onset separation of repeated notes, vibrato held as one note |
-| `:core:database` | 67 | 74 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 migration and cascade delete on a device (spec I4) |
+| `:core:database` | 67 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
 | `:app` | 85 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, and screen logic that does not need a device |
-| **Total** | **646** | **96** | |
+| **Total** | **655** | **99** | |
 
 ## Deliberately uncovered (and why)
 

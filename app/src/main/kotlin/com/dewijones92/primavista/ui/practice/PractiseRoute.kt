@@ -98,7 +98,7 @@ public fun PractiseRoute(container: AppContainer, modifier: Modifier = Modifier)
                     onResume = viewModel::play,
                     onKeyPressed = { midi, nanos -> tapped(container, midi, nanos) },
                     onFrame = viewModel::tick,
-                    onToggle = viewModel::toggle,
+                    onChange = viewModel::change,
                     setup = setup,
                 )
             } else {

@@ -71,6 +71,32 @@ internal fun DrawScope.drawPlayhead(x: Float, paint: StaffPaint) {
     drawCircle(paint.colors.playhead, radius = cap, center = Offset(x, size.height - cap))
 }
 
+/**
+ * The card over the music: everything at or behind [x] is covered, so a note is gone by the time it
+ * reaches the playhead and Dewi must already have read it.
+ *
+ * Paper rather than a shade, because the point is that the music is *not there* — a translucent
+ * wash would leave it half-readable, which trains squinting rather than reading ahead. The right
+ * edge is a short gradient so the cover looks like a page sliding over rather than a rectangle
+ * parked on the staff.
+ */
+internal fun DrawScope.drawReadingCover(x: Float, paint: StaffPaint) {
+    if (x <= 0f) return
+    val width = x.coerceAtMost(size.width)
+    drawRect(color = paint.colors.paper, size = Size(width, size.height))
+    val edge = COVER_EDGE_SPACES * paint.space
+    drawRect(
+        brush = Brush.horizontalGradient(
+            colors = listOf(paint.colors.paper, Color.Transparent),
+            startX = width,
+            endX = width + edge,
+        ),
+        topLeft = Offset(width, 0f),
+        size = Size(edge, size.height),
+    )
+}
+
+private const val COVER_EDGE_SPACES = 2.4f
 private const val PINNED_EDGE_SPACES = 1.1f
 private const val PLAYHEAD_BLOOM_SPACES = 5.5f
 private const val PLAYHEAD_GLOW_ALPHA = 0.30f

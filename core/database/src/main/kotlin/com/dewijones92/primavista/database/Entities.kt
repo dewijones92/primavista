@@ -94,6 +94,7 @@ public data class SettingsEntity(
     val metronomeOn: Boolean,
     val listenFirstOn: Boolean,
     val inputLabel: String?,
+    val readingLeadBeats: Int,
     @PrimaryKey val id: Int = SINGLETON_ID,
 ) {
     public companion object {

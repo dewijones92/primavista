@@ -88,7 +88,7 @@ internal fun FocusedSession(
             onResume = viewModel::play,
             onKeyPressed = { midi, nanos -> container.tapSource.onKeyPressed(midi, nanos) },
             onFrame = viewModel::tick,
-            onToggle = viewModel::toggle,
+            onChange = viewModel::change,
             modifier = Modifier.fillMaxWidth().weight(1f),
         )
         footer(state, viewModel)

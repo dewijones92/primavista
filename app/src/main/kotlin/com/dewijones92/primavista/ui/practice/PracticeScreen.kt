@@ -74,8 +74,8 @@ public fun PracticeScreen(
     onKeyPressed: (Midi, Long) -> Unit,
     onFrame: () -> Unit,
     modifier: Modifier = Modifier,
-    /** Null hides the metronome and echo chips: a control nothing can act on must not be shown. */
-    onToggle: ((PracticeToggle) -> Unit)? = null,
+    /** Null hides the setup controls entirely: a control nothing can act on must not be shown. */
+    onChange: ((PracticeChange) -> Unit)? = null,
     setup: SessionSetup? = null,
 ) {
     // The frame clock drives the session. It is the UI's job to decide *when to look*; the
@@ -89,7 +89,7 @@ public fun PracticeScreen(
 
     Column(modifier.fillMaxSize()) {
         PracticeHeader(state)
-        SetupPanel(state, setup, onToggle)
+        SetupPanel(state, setup, onChange)
         SessionNotice(state.notice, setup?.onDismissNotice ?: {})
 
         Box(
@@ -170,6 +170,7 @@ private fun ScrollingStaff(state: PracticeUiState, metrics: GlyphMetrics) {
                 scrollX = StaffSpaces(scroll),
                 playheadX = playhead,
                 pinnedAt = shown,
+                coverX = state.coverX,
                 appearance = NoteStyling(
                     verdicts = state.verdicts,
                     landings = landings,

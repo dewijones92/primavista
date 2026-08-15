@@ -31,6 +31,7 @@ that something works; if you find one that does not, the row is the bug.
 | Diagnostics report, shareable with no network | shipped | `Diag` | 12 JVM tests on the buffer; **that a report can reconstruct a session is not yet proven** (spec I7) |
 | Signed APK per push, installable via Obtainium | shipped | GitHub Actions | `v0.1.<run>` releases; `/releases/latest/download/primavista.apk` verified 200 |
 | Trill, the mascot | shipped | `MascotMood` | drawn in code from one boolean-union silhouette, seven moods, scales 24dp→200dp; her mood is derived from the same tone as the score so she cannot contradict it |
+| Reading ahead: a card over the music at the playhead | shipped | `ReadingLead` | [`reading-ahead.md`](reading-ahead.md); 8 JVM tests plus a v3→v4 migration proving it arrives off |
 | A first run that teaches | shipped | — | Trill introduces the one idea (height on the stave is pitch) interactively, then asks for one note and names what you did. Skippable at every step |
 | Placement read | shipped | `PlacementRead` | adaptive probes climbing stages 1→2→4→7→10, stopping at the first that does not go well; seeds skills from the judge's own verdicts, so it measures rather than asks |
 | The path — ten stages | shipped | `Curriculum` | progress is "n of m skills solid" and can go down; `Curriculum.isPassed` is the only answer to whether a rung is behind you |

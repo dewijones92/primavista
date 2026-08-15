@@ -127,7 +127,7 @@ class SessionReadsSettingsTest {
         viewModel.choose(PracticeIntent.Next)
         viewModel.awaitLoaded()
 
-        viewModel.toggle(PracticeToggle.Metronome)
+        viewModel.change(PracticeChange.Metronome)
         viewModel.await("the metronome preference was not saved") { !wiring.settings.metronomeOn }
 
         assertFalse(wiring.settings.metronomeOn)
