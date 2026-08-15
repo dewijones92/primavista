@@ -64,11 +64,16 @@ public fun PractiseRoute(container: AppContainer, modifier: Modifier = Modifier)
         viewModel.selectInput(InputMode.Mic, granted)
     }
 
-    LaunchedEffect(Unit) {
-        if (state.score == null && !state.loading) viewModel.choose(PracticeIntent.Next)
-    }
+    // One effect, because two of them race. A separate "choose something to read" effect ran
+    // alongside this one on a fresh tab, and whichever coroutine finished last won the state — so
+    // asking for a piece from the Repertoire tab could land you on a generated exercise instead.
+    // Found on a device on 2026-08-15; the race predates the file picker that made it easy to hit.
     LaunchedEffect(PracticeRequest.count) {
-        viewModel.openPiece(PracticeRequest.count, PracticeRequest.peek())
+        val chosen = PracticeRequest.peek()
+        when {
+            chosen != null -> viewModel.openScore(PracticeRequest.count, chosen)
+            state.score == null && !state.loading -> viewModel.choose(PracticeIntent.Next)
+        }
     }
 
     DisposableEffect(lifecycleOwner) {

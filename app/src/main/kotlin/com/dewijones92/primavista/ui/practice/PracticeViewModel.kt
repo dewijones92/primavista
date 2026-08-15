@@ -34,7 +34,6 @@ import com.dewijones92.primavista.practice.Stage
 import com.dewijones92.primavista.practice.TickTiming
 import com.dewijones92.primavista.practice.TransportState
 import com.dewijones92.primavista.practice.Verdict
-import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.Midi
 import com.dewijones92.primavista.score.Note
 import com.dewijones92.primavista.score.Score
@@ -200,17 +199,13 @@ public class PracticeViewModel(
     }
 
     /** A piece asked for from the Repertoire tab. [requestId] makes a repeat request re-load it. */
-    public fun openPiece(requestId: Int, piece: CorpusPiece?) {
-        if (piece == null || requestId == handledRequest) return
+    public fun openScore(requestId: Int, score: Score?) {
+        if (score == null || requestId == handledRequest) return
         handledRequest = requestId
         _state.value = _state.value.copy(loading = true, notice = null, result = null)
         viewModelScope.launch {
-            val selection = wiring.open(piece)
-            if (selection == null) {
-                _state.value = _state.value.copy(loading = false, notice = "\"${piece.title}\" could not be read.")
-                return@launch
-            }
-            diag.event(TAG, "repertoire request=$requestId -> '${selection.score.title}'")
+            val selection = wiring.open(score)
+            diag.event(TAG, "chosen request=$requestId '${score.title}' -> '${selection.score.title}'")
             load(selection, _state.value.input, mayListenFirst = true)
         }
     }

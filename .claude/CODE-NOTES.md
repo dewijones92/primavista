@@ -2851,3 +2851,28 @@ Agents implementing a module append their own `##` section and never rewrite ano
   truncated mid-block, a spec this build cannot read — all come back as `Lost`/`Unreadable` with
   text. A blank would read as "nothing went wrong", and "no session has been played" and "the run
   was lost" are different situations.
+
+## app/.../ui/repertoire/Picked.kt and the practice hand-off
+
+- **`PracticeRequest` carries a `Score`, not a `CorpusPiece`, and that is the whole feature.** A
+  file off the phone and a song that shipped are the same thing by the time anything downstream
+  sees them — same parser, same keyboard-part choice, same material/decoration split, same grading,
+  same windowing. Had the request kept carrying a shipped piece, "open a file" would have needed a
+  parallel path, which is the failure the twin laws exist to prevent.
+
+- **A file is told apart by content, never by name.** `isCompressedMusicXml` reads the zip magic.
+  A picked file's display name proves nothing: a zipped score is commonly called `score.xml`, may
+  have no extension, and may be in a script this app cannot case-fold. `Corpus.parse` was changed
+  to go through the same `parseAny` rather than checking its own resource extensions, so there is
+  one dispatcher.
+
+- **The wildcard MIME type is in the picker list deliberately.** `.mxl` is routinely typed
+  `application/octet-stream` or nothing, and a picker that will not show the file Dewi is looking
+  at is worse than one that lets him choose wrongly and hear a reason.
+
+- **Two `LaunchedEffect`s were racing on a fresh Practise tab.** "Choose something to read" and
+  "open what was asked for" both launched, and whichever coroutine finished last won the state —
+  so asking for a piece could land on a generated exercise. Found on a device on 2026-08-15 with
+  the picker, but the race predates it and applied equally to the Repertoire tab's own button. One
+  effect decides now, and a pending request wins. Nothing in the JVM suite could see this: both
+  paths were individually correct.

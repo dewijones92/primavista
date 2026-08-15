@@ -26,7 +26,6 @@ public data class CorpusPiece(
 public object Corpus {
     private const val HAND_AUTHORED = "/corpus/manifest.tsv"
     private const val IMPORTED = "/corpus/lieder/manifest.tsv"
-    private const val COMPRESSED_SUFFIX = ".mxl"
     private const val COMMENT = '#'
     private const val FIELDS = 7
     private const val ID_PREFIX = "id:"
@@ -56,12 +55,7 @@ public object Corpus {
      * the manifest names one song.
      */
     public fun parse(piece: CorpusPiece, parser: MusicXmlParser): MusicXmlResult {
-        val bytes = read(piece)
-        val result = if (piece.resourcePath.endsWith(COMPRESSED_SUFFIX)) {
-            parser.parseCompressed(bytes, piece.id.value, piece.licence, piece.part)
-        } else {
-            parser.parse(bytes.toString(Charsets.UTF_8), piece.id.value, piece.licence, piece.part)
-        }
+        val result = parser.parseAny(read(piece), piece.id.value, piece.licence, piece.part)
         return when (result) {
             is MusicXmlResult.Failed -> result
             is MusicXmlResult.Parsed ->

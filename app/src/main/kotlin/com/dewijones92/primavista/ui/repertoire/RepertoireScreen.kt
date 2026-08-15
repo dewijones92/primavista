@@ -23,12 +23,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,11 +41,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dewijones92.primavista.score.Corpus
-import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.Polyphony
+import com.dewijones92.primavista.score.Score
 import com.dewijones92.primavista.theme.LocalNotationColors
 import com.dewijones92.primavista.ui.mascot.MascotMood
 import com.dewijones92.primavista.ui.mascot.Trill
@@ -55,7 +58,10 @@ import com.dewijones92.primavista.ui.progress.describe
 internal fun RepertoireScreen(
     rows: List<RepertoireRow>,
     stillReading: Int,
-    onPractise: (CorpusPiece) -> Unit,
+    onPractise: (Score) -> Unit,
+    picked: Picked?,
+    onOpenFile: () -> Unit,
+    onDismissPicked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -64,6 +70,7 @@ internal fun RepertoireScreen(
         verticalArrangement = Arrangement.spacedBy(CARD_GAP),
     ) {
         item { RepertoireHeader() }
+        item { OpenAFile(picked, onOpenFile, onPractise, onDismissPicked) }
         items(rows, key = { it.piece.id.value }) { row -> RepertoireCard(row, onPractise) }
         if (stillReading > 0) {
             items(stillReading) { SkeletonCard() }
@@ -93,8 +100,95 @@ private fun RepertoireHeader() {
     Spacer(Modifier.height(CARD_GAP))
 }
 
+/**
+ * Reading something Dewi already has.
+ *
+ * The pipeline underneath is the shipped one — same parser, same keyboard-part choice, same
+ * material/decoration split, same grading — so what is different here is only what is *known*
+ * about the file, which is nothing. Hence the licence line and hence the losses being shown
+ * **before** he reads rather than after.
+ */
 @Composable
-private fun RepertoireCard(row: RepertoireRow, onPractise: (CorpusPiece) -> Unit) {
+private fun OpenAFile(
+    picked: Picked?,
+    onOpenFile: () -> Unit,
+    onPractise: (Score) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(CARD_CORNER),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(CARD_PADDING)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "Something of your own",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "A MusicXML file from this phone. Nothing is uploaded — the app has no network.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.width(GAP))
+                Button(onClick = onOpenFile, modifier = Modifier.testTag("open-file")) {
+                    Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(CHEVRON))
+                    Spacer(Modifier.width(CHIP_GAP))
+                    Text("Open")
+                }
+            }
+            when (picked) {
+                null -> Unit
+                is Picked.Refused -> {
+                    Spacer(Modifier.height(SECTION_GAP))
+                    TrillAside(mood = MascotMood.Wincing, text = picked.reason, color = MaterialTheme.colorScheme.error)
+                }
+                is Picked.Readable -> PickedPiece(picked, onPractise, onDismiss)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PickedPiece(picked: Picked.Readable, onPractise: (Score) -> Unit, onDismiss: () -> Unit) {
+    val notation = LocalNotationColors.current
+    Spacer(Modifier.height(SECTION_GAP))
+    Text(picked.score.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    Spacer(Modifier.height(GAP))
+    Row(horizontalArrangement = Arrangement.spacedBy(CHIP_GAP)) {
+        Chip("${picked.score.measures.size} bars", MaterialTheme.colorScheme.onSurfaceVariant)
+        Chip("${picked.score.attackedNotes.size} notes", MaterialTheme.colorScheme.onSurfaceVariant)
+        Chip(
+            text = if (picked.score.isGrandStaff) "two staves" else "one staff",
+            tint = if (picked.score.isGrandStaff) notation.playhead else notation.correct,
+        )
+    }
+    if (picked.lost.isNotEmpty()) {
+        Spacer(Modifier.height(GAP))
+        Text(
+            text = "${picked.lost.size} thing${if (picked.lost.size == 1) "" else "s"} could not be read, so " +
+                "there is music missing from this page: " + picked.lost.take(LOSSES_SHOWN).joinToString("; "),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+    Spacer(Modifier.height(SECTION_GAP))
+    Row(horizontalArrangement = Arrangement.spacedBy(CHIP_GAP)) {
+        Button(onClick = { onPractise(picked.score) }, modifier = Modifier.weight(1f).testTag("practise-picked")) {
+            Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(CHEVRON))
+            Spacer(Modifier.width(CHIP_GAP))
+            Text("Practise this")
+        }
+        TextButton(onClick = onDismiss) { Text("Clear") }
+    }
+}
+
+@Composable
+private fun RepertoireCard(row: RepertoireRow, onPractise: (Score) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val turn by animateFloatAsState(
         targetValue = if (expanded) HALF_TURN else 0f,
@@ -223,7 +317,7 @@ private fun Chip(text: String, tint: Color) {
 }
 
 @Composable
-private fun ExpandedDetail(row: RepertoireRow, onPractise: (CorpusPiece) -> Unit) {
+private fun ExpandedDetail(row: RepertoireRow, onPractise: (Score) -> Unit) {
     Spacer(Modifier.height(SECTION_GAP))
     if (row.skills.isNotEmpty()) {
         Heading("What it makes you read")
@@ -276,7 +370,8 @@ private fun ExpandedDetail(row: RepertoireRow, onPractise: (CorpusPiece) -> Unit
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(SECTION_GAP))
-    Button(onClick = { onPractise(row.piece) }, modifier = Modifier.fillMaxWidth()) {
+    val score = row.score ?: return
+    Button(onClick = { onPractise(score) }, modifier = Modifier.fillMaxWidth()) {
         Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(CHEVRON))
         Spacer(Modifier.width(CHIP_GAP))
         Text("Practise this")
@@ -330,6 +425,7 @@ private const val HALF_TURN = 180f
 private const val CHIP_ALPHA = 0.16f
 private const val SKILLS_SHOWN = 8
 private const val DROPPED_KINDS_SHOWN = 6
+private const val LOSSES_SHOWN = 3
 private const val TITLE_BONE = 0.7f
 private const val LINE_BONE = 0.45f
 private val SCREEN_PADDING = 16.dp

@@ -28,7 +28,6 @@ import com.dewijones92.primavista.practice.SpacedPracticeScheduler
 import com.dewijones92.primavista.practice.TempoConductor
 import com.dewijones92.primavista.practice.Tolerances
 import com.dewijones92.primavista.practice.WindowedJudge
-import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.Midi
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.Score
@@ -114,7 +113,7 @@ internal class FakeWiring(
     override suspend fun chooseDrill(target: SkillTag, input: Polyphony, seed: Long): PracticeSelection =
         chooseNext(input, seed)
 
-    override suspend fun open(piece: CorpusPiece): PracticeSelection = chooseNext(Polyphony.Poly, 0)
+    override suspend fun open(score: Score): PracticeSelection = chooseNext(Polyphony.Poly, 0)
 
     override suspend fun save(session: StoredSession, judgements: List<NoteJudgement>) = Unit
 

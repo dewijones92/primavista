@@ -12,7 +12,6 @@ import com.dewijones92.primavista.practice.NoteJudgement
 import com.dewijones92.primavista.practice.PerformanceJudge
 import com.dewijones92.primavista.practice.PracticeFocus
 import com.dewijones92.primavista.practice.SkillOutcome
-import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.Score
 import com.dewijones92.primavista.score.SkillTag
@@ -91,7 +90,7 @@ public interface PracticeWiring {
     public suspend fun chooseDrill(target: SkillTag, input: Polyphony, seed: Long): PracticeSelection
 
     /** Null when the piece does not parse; the reason is logged rather than shown as an empty staff. */
-    public suspend fun open(piece: CorpusPiece): PracticeSelection?
+    public suspend fun open(score: Score): PracticeSelection
 
     public suspend fun save(session: StoredSession, judgements: List<NoteJudgement>)
 

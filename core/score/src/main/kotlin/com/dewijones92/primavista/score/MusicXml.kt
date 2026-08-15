@@ -76,3 +76,34 @@ public data class Dropped(
     override fun toString(): String =
         "dropped <$element>" + (measure?.let { " at bar $it" } ?: "") + ": $detail"
 }
+
+/**
+ * The first four bytes of every zip, and so of every `.mxl`.
+ *
+ * A file picked from the system picker arrives as bytes with a display name that may be anything at
+ * all — `score.xml` for a zipped one, no extension, a name in a script this app cannot case-fold.
+ * The content says what it is and the name is a hint, so this dispatches on the content.
+ */
+private val ZIP_MAGIC = byteArrayOf(0x50, 0x4B, 0x03, 0x04)
+
+/** Whether these bytes are a compressed MusicXML container rather than a plain document. */
+public fun isCompressedMusicXml(bytes: ByteArray): Boolean =
+    bytes.size >= ZIP_MAGIC.size && ZIP_MAGIC.indices.all { bytes[it] == ZIP_MAGIC[it] }
+
+/**
+ * Parses MusicXML bytes of either kind, telling them apart by content rather than by file name.
+ *
+ * The one entry point for "here are some bytes, read them": the shipped corpus and a file Dewi
+ * picked take the same road, so a piece he brings is judged, graded and windowed by exactly the
+ * code that handles a piece that shipped.
+ */
+public fun MusicXmlParser.parseAny(
+    bytes: ByteArray,
+    sourceName: String,
+    licence: String,
+    part: PartChoice = PartChoice.First,
+): MusicXmlResult = if (isCompressedMusicXml(bytes)) {
+    parseCompressed(bytes, sourceName, licence, part)
+} else {
+    parse(bytes.toString(Charsets.UTF_8), sourceName, licence, part)
+}

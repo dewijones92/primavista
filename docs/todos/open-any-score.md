@@ -1,7 +1,7 @@
 ---
 title: Open any score Dewi already has
 kind: todo
-status: planned
+status: done
 priority: medium
 area: ui
 updated: 2026-08-15
@@ -37,3 +37,13 @@ through `ContentResolver`, and somewhere to keep it (Room, or re-pick each time)
 - Dewi can pick a file and practise it in the same session.
 - A file that loses music says so plainly before he reads it, naming what went.
 - A file that is not MusicXML at all is refused with a reason, not a crash.
+
+## Done (2026-08-15)
+
+See [`../features/open-any-score.md`](../features/open-any-score.md). All three done-conditions
+hold: a file can be picked and practised in the same session, one that loses music says so before
+he reads it, and one that is not MusicXML is refused with a reason naming the file.
+
+The pipeline needed one addition — `isCompressedMusicXml` / `parseAny`, telling a `.mxl` from a
+plain document **by content**, because a picked file's name proves nothing. `Corpus` now goes
+through the same entry point rather than checking its own resource extensions.

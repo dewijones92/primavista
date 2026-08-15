@@ -40,8 +40,8 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 | `:lib:pitch` | 60 | — | YIN against synthesised tones, onset separation of repeated notes, vibrato held as one note |
 | `:core:database` | 67 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
-| `:app` | 88 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, and screen logic that does not need a device |
-| **Total** | **668** | **99** | |
+| `:app` | 97 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, and screen logic that does not need a device |
+| **Total** | **677** | **99** | |
 
 ## Deliberately uncovered (and why)
 

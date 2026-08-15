@@ -14,7 +14,6 @@ import com.dewijones92.primavista.practice.PracticeChoice
 import com.dewijones92.primavista.practice.PracticeFocus
 import com.dewijones92.primavista.practice.SkillOutcome
 import com.dewijones92.primavista.practice.SpacedPracticeScheduler
-import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.DifficultySpec
 import com.dewijones92.primavista.score.ExerciseGenerator
 import com.dewijones92.primavista.score.Polyphony
@@ -104,26 +103,25 @@ public class AppPracticeWiring(private val container: AppContainer) : PracticeWi
      * A whole song is not a unit of practice, so what opens is the most of it the rung he stands on
      * can hold. The piece keeps its name either way; the passage says which bars.
      */
-    override suspend fun open(piece: CorpusPiece): PracticeSelection? {
-        val score = shipped.pieces().firstOrNull { it.id == piece.id }
-        if (score == null) {
-            diag.event(TAG, "'${piece.title}' was asked for but is not in the parsed corpus")
-            return null
-        }
+    /**
+     * A whole song is not a unit of practice, so what opens is the most of it the rung he stands on
+     * can hold. The piece keeps its name either way; the passage says which bars.
+     */
+    override suspend fun open(score: Score): PracticeSelection {
         val states = withContext(Dispatchers.IO) { container.skillStore?.states().orEmpty() }
         val standing = container.curriculum.currentStage(states)
         val passage = shipped.passageFor(score, standing)
         if (passage == null) {
             diag.event(
                 TAG,
-                "'${piece.title}' offers nothing any rung admits, so it opens whole " +
+                "'${score.title}' offers nothing any rung admits, so it opens whole " +
                     "[bars=${score.measures.size} stage=${standing.id.number}]",
             )
             return PracticeSelection(score, emptySet(), "Chosen from the repertoire")
         }
         diag.event(
             TAG,
-            "'${piece.title}' opens as ${passage.id.value} [bars=${passage.measures.size} " +
+            "'${score.title}' opens as ${passage.id.value} [bars=${passage.measures.size} " +
                 "of ${score.measures.size} stage=${standing.id.number}'${standing.title}' " +
                 "rung=${shipped.rungFor(passage)?.number}]",
         )

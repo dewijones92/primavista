@@ -4,6 +4,7 @@ import com.dewijones92.primavista.practice.StageId
 import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.Dropped
 import com.dewijones92.primavista.score.Polyphony
+import com.dewijones92.primavista.score.Score
 import com.dewijones92.primavista.score.SkillTag
 
 /**
@@ -20,6 +21,8 @@ import com.dewijones92.primavista.score.SkillTag
  */
 internal data class RepertoireRow(
     val piece: CorpusPiece,
+    /** Null when it did not parse: a dead piece is still a row, it just cannot be practised. */
+    val score: Score?,
     val bars: Int,
     val notes: Int,
     val tempoBpm: Int,
