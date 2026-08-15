@@ -45,6 +45,10 @@ import com.dewijones92.primavista.score.Corpus
 import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.theme.LocalNotationColors
+import com.dewijones92.primavista.ui.mascot.MascotMood
+import com.dewijones92.primavista.ui.mascot.Trill
+import com.dewijones92.primavista.ui.mascot.TrillAside
+import com.dewijones92.primavista.ui.mascot.TrillPanel
 import com.dewijones92.primavista.ui.progress.describe
 
 @Composable
@@ -58,19 +62,7 @@ internal fun RepertoireScreen(
         contentPadding = PaddingValues(SCREEN_PADDING),
         verticalArrangement = Arrangement.spacedBy(CARD_GAP),
     ) {
-        item {
-            Column {
-                Text("Repertoire", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "${Corpus.pieces.size} pieces, all public domain. Tap one to read what " +
-                        "it demands, then practise it.",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(CARD_GAP))
-            }
-        }
+        item { RepertoireHeader() }
         when {
             rows == null -> items(Corpus.pieces) { SkeletonCard() }
             rows.isEmpty() -> item { NoPieces() }
@@ -79,6 +71,26 @@ internal fun RepertoireScreen(
             }
         }
     }
+}
+
+/** Trill is [MascotMood.Curious] here and nowhere else: this is the screen that waits on a choice. */
+@Composable
+private fun RepertoireHeader() {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Repertoire", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "${Corpus.pieces.size} pieces, all public domain. Tap one to read what " +
+                    "it demands, then practise it.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(GAP))
+        Trill(MascotMood.Curious, Modifier.size(HEADER_BIRD))
+    }
+    Spacer(Modifier.height(CARD_GAP))
 }
 
 @Composable
@@ -121,9 +133,9 @@ private fun RepertoireCard(row: RepertoireRow, onPractise: (CorpusPiece) -> Unit
             }
             Spacer(Modifier.height(GAP))
             if (row.failure != null) {
-                Text(
+                TrillAside(
+                    mood = MascotMood.Wincing,
                     text = "Did not parse: ${row.failure}",
-                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
             } else {
@@ -192,11 +204,10 @@ private fun ExpandedDetail(row: RepertoireRow, onPractise: (CorpusPiece) -> Unit
     }
     if (row.polyphony == Polyphony.Poly) {
         Heading("On the microphone")
-        Text(
+        TrillAside(
+            mood = MascotMood.Wincing,
             text = "Refused ${row.firstPolyphonicBar?.let { "from bar $it" } ?: "here"}: a mic " +
                 "follows one line, and half-hearing two would score notes it never heard.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(SECTION_GAP))
     }
@@ -259,16 +270,13 @@ private fun Bone(widthFraction: Float) {
 
 @Composable
 private fun NoPieces() {
-    Column(Modifier.fillMaxWidth().padding(vertical = SCREEN_PADDING)) {
-        Text("No pieces are shipped in this build", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(GAP))
-        Text(
-            text = "The corpus is a compiled-in list and this build's is empty. A piece whose " +
-                "file was missing or unreadable would still be listed here, with its reason.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    TrillPanel(
+        mood = MascotMood.Curious,
+        title = "Nothing to read here",
+        body = "The corpus is a compiled-in list and this build's is empty. A piece whose file " +
+            "was missing or unreadable would still be listed here, with its reason.",
+        modifier = Modifier.padding(vertical = SCREEN_PADDING),
+    )
 }
 
 private const val HALF_TURN = 180f
@@ -288,3 +296,4 @@ private val CHIP_PADDING = 8.dp
 private val CHIP_INSET = 4.dp
 private val CHEVRON = 20.dp
 private val BONE_HEIGHT = 12.dp
+private val HEADER_BIRD = 64.dp

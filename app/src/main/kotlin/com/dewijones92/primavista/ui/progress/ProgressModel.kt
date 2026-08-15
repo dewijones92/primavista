@@ -1,6 +1,7 @@
 package com.dewijones92.primavista.ui.progress
 
 import com.dewijones92.primavista.practice.SkillState
+import com.dewijones92.primavista.ui.mascot.MascotMood
 import kotlin.math.roundToInt
 
 /**
@@ -23,11 +24,16 @@ public data class SessionPoint(
     val title: String,
 )
 
-internal const val SOLID_STRENGTH = 0.8
-
+/**
+ * The "Solid" bucket is [SkillState.isSolid] **and not due**, and the second half is about spacing
+ * rather than about reading — a skill can be read reliably and still be worth revisiting today.
+ * Solidity itself is the curriculum's word, so it is asked for rather than restated here: this file
+ * used to carry its own 0.8, which meant a stage could pass on a skill this screen would not colour
+ * as solid. See `.claude/CODE-NOTES.md`.
+ */
 internal fun bucketOf(state: SkillState, nowEpochMillis: Long): SkillBucket = when {
     state.isDue(nowEpochMillis) -> SkillBucket.Due
-    state.strength >= SOLID_STRENGTH -> SkillBucket.Mastered
+    state.isSolid -> SkillBucket.Mastered
     else -> SkillBucket.Building
 }
 
@@ -62,6 +68,46 @@ internal fun attemptsText(state: SkillState): String = buildString {
 
 internal fun percent(value: Double): Int = (value * PERCENT_SCALE).roundToInt()
 
+/** What Trill's face says at the top of the screen, and the sentence that has to justify it. */
+internal data class ProgressGreeting(val mood: MascotMood, val line: String)
+
+/**
+ * Pure, so the one rule that matters is a unit test rather than something to be eyeballed: a face
+ * is only pleased where the stored evidence earns it. [sessions] must be oldest-first, which is the
+ * order the route reads them in. See `.claude/CODE-NOTES.md`.
+ */
+internal fun greetingFor(states: List<SkillState>, sessions: List<SessionPoint>): ProgressGreeting {
+    val best = personalBest(sessions)
+    return when {
+        states.isEmpty() -> ProgressGreeting(MascotMood.Sleepy, NOTHING_TRACKED)
+        best != null -> ProgressGreeting(MascotMood.Impressed, best)
+        states.all { it.isSolid } -> ProgressGreeting(MascotMood.Delighted, allSolidLine(states.size))
+        else -> ProgressGreeting(MascotMood.Idle, trackedLine(states.size))
+    }
+}
+
+/**
+ * The line for a best-yet session, or null when there is not one to claim. Both guards are honesty
+ * rather than taste: a "best" out of two sessions is arithmetic on nothing, and two runs that print
+ * the same percentage have not beaten each other on the screen Dewi is looking at.
+ */
+private fun personalBest(sessions: List<SessionPoint>): String? {
+    if (sessions.size < MIN_BEST_SESSIONS) return null
+    val latest = percent(sessions.last().accuracy)
+    val previous = percent(sessions.dropLast(1).maxOf { it.accuracy })
+    if (latest <= previous) return null
+    return "Your best stored session yet — $latest% of its written notes, past $previous%."
+}
+
+internal fun trackedLine(count: Int): String =
+    "$count reading skill${plural(count)} tracked, every one of them from notes this app put in " +
+        "front of you."
+
+private fun allSolidLine(count: Int): String =
+    if (count == 1) "The one skill tracked is reading solid." else "All $count tracked skills are reading solid."
+
+private fun plural(count: Int): String = if (count == 1) "" else "s"
+
 /**
  * Whether the recent run is going the right way, from the sessions themselves. Null when there is
  * not enough to compare — two points are a line, one point is not a direction.
@@ -86,8 +132,10 @@ internal fun trendText(delta: Double?): String = when {
 
 private fun atLeastOne(remaining: Long, unit: Long): Long = maxOf(1L, remaining / unit)
 
+private const val NOTHING_TRACKED = "Nothing read yet"
 private const val PERCENT_SCALE = 100
 private const val MIN_TREND_POINTS = 4
+private const val MIN_BEST_SESSIONS = 4
 private const val TREND_NOTICEABLE = 0.05
 private const val MILLIS_PER_MINUTE = 60_000L
 private const val MILLIS_PER_HOUR = 60 * MILLIS_PER_MINUTE

@@ -1418,6 +1418,91 @@ Agents implementing a module append their own `##` section and never rewrite ano
   lines; `CorpusPiece.source` records the work and why it is public domain, and `licence` covers
   the engraving separately because those are two different claims.
 
+### A drill must be able to contain what it targets (2026-08-15)
+
+- **A bar that *adds up* is not the same as a bar that *contains the figure*, and the gap between
+  those two questions was a silent infinite loop.** `withRhythmFigure` narrowed `symbols` to the
+  targeted value and then asked `widenUntilBarsFill` whether the bar could be filled. For a dotted
+  half in 4/4 the answer was yes — with two plain halves — so nothing widened and the dotted half
+  was never offered to the filler at all, in 0 of 32 seeds. `BarFill.fill` only ever picks a choice
+  whose *remainder* is reachable, and with steps of 2 and 3 over four slots, three leaves a
+  remainder of one that nothing can fill. The consequence is worse than a dull exercise: the drill
+  records zero attempts for the skill, zero attempts changes no state, the skill stays weakest, and
+  the scheduler offers the identical useless drill for ever. `widenUntilTargetFits` asks the right
+  question instead — `BarFill.canPlace(target)`, i.e. "does a bar exist that contains this?" — and
+  it subsumes the old one, because a bar that cannot be filled cannot contain anything either.
+
+- **The companion search tries each candidate alone before accumulating.** Longest-first
+  accumulation reached a fillable set by adding a whole note that did not help and a quarter that
+  did. Both satisfy "never widen to something shorter than the spec asked for", so no test caught
+  it, but the extra value dilutes the figure being drilled. Trying singles first gives the smallest
+  vocabulary that can hold the target; the accumulating loop stays as the fallback for a metre
+  where no single companion is enough.
+
+- **`withBarHolding` moves the metre, and only when the bar is too short to hold the figure at
+  all.** A semibreve cannot exist in 3/4 and no choice of companions changes that, so a drill aimed
+  at one in 3/4 was unreachable by construction. The metre is a dial like any other, and the beat
+  unit is kept while the beat count rises to the smallest that holds the figure: a whole note in
+  3/4 becomes 4/4, a dotted whole in 4/4 becomes 6/4, which is where a dotted semibreve actually
+  lives. The bar is left alone whenever it can host the figure, so the everyday case — a dotted
+  half in 4/4 — keeps the metre Dewi was reading.
+
+- **Tuplet choices now honour `maxDots`.** They were built with `dots = 0` hard-coded, so
+  `RhythmFigure(symbol, dots > 0, tupletNumerator = 3)` — an ordinary dotted note inside a triplet,
+  which any imported score can contain — was another figure the generator could record and never
+  write.
+
+- **An alteration is only readable where the key does not already spell it, so `withAccidental`
+  moves the key when it must.** The walker refuses to write an accidental whose sounding pitch
+  class is in the key, because that would be a respelling rather than something to read. Two
+  consequences were invisible until swept: a **natural** is never an accidental in C major (nothing
+  is altered to cancel), and a **double sharp** is never one in D major (every letter's double
+  sharp spells a diatonic note there). Both were 0 of 32. `isWritableIn` is the one test, and
+  `nearestKeyWriting` moves to the closest key that passes it — a leap of one fifth, not a redesign.
+
+- **`extraAlterations` admits a natural only in a key that alters something.** Filtering `Natural`
+  out unconditionally was what made the case above unreachable; admitting it unconditionally would
+  have changed the random stream of every C-major spec in the app — for no gain, because the
+  walker's own fits check rejects every natural in C anyway. Gating on `key.fifths != 0` is not a
+  dodge, it is the same sentence the first bullet of this note states: a natural sign is an
+  accidental exactly where the key alters that letter.
+
+- **`MelodyWalker` can repeat a pitch, because music does.** `nextIndex` filtered `it != index`, so
+  no generated exercise has ever contained two notes the same — which makes `SkillTag.Leap(0)`
+  impossible to drill. That one is not hypothetical: all three shipped corpus pieces contain
+  repeated notes, so failing one in Ode to Joy was enough to weaken a skill the generator could
+  never exercise. `REPEAT_WEIGHT` is 2, above a leap and well below a step, which is roughly how
+  often real melodies repeat.
+
+- **`TargetedDrillTest` sweeps the skill space exhaustively rather than mirroring `Curriculum`.**
+  Two reasons. `:core:score` cannot see `:core:practice`, so a mirror would be a copy that drifts;
+  and the scheduler targets whatever is *weakest*, which includes skills derived from parsed pieces
+  that no stage ever claims — which is precisely where the natural, the double sharp and the
+  repeated note were hiding. `the sweep covers every skill this app can derive from its own
+  material` is what stops the sweep drifting from reality: it derives skills from real generated
+  drills and the real corpus and asserts the sweep is a superset.
+
+- **`isEveryday`'s `when` is the compile-time half of that guard.** It is exhaustive over
+  `SkillTag`, so adding a case to the sealed hierarchy fails to compile here as well as in
+  `specTargeting` — the sweep cannot silently omit a new kind of skill.
+
+- **The reachability guard re-checks a failure against `DEEP_SEEDS` before believing it.** An exact
+  melodic interval is genuinely rare — `Leap(11)` lands in about one drill in twenty-four on a base
+  with six notes in it — so a thin pass at 32 seeds would be luck, and the next innocuous change to
+  the random stream would turn it red for no reason. Re-running only the zeroes at 256 seeds costs
+  nothing while everything is reachable, and turns "0 of 32" into a claim worth failing a build for.
+
+- **Known gap, stated rather than hidden: the generator writes only 3-in-2 tuplets.** A quintuplet
+  skill can be derived from an imported score and can never be drilled. `a tuplet this generator
+  cannot write is a stated gap rather than a broken bar` pins the two things that must remain true
+  meanwhile — the bar still adds up, and the drill does not quietly substitute a triplet for the
+  tuplet it was asked for, which the first version of the fix did by leaving `allowTuplets` on.
+
+- **`Duration.figure` exists so the tag is spelled once.** The generator has to ask "is this choice
+  the figure I was told to target?" and the deriver has to ask "which figure is this note?"; two
+  constructions of `SkillTag.RhythmFigure` from the same three fields is exactly the shape of
+  duplication this repo has already been bitten by twice.
+
 ## :core:notation
 
 - **`BravuraGlyphMetrics` keeps SMuFL's upward y; the engine flips it.** Bravura publishes
@@ -2285,3 +2370,290 @@ Agents implementing a module append their own `##` section and never rewrite ano
 - **What was verified on the emulator.** Every mood at 200dp, 88dp and 40dp, on the manuscript ground
   and on ink, plus `TrillOnStaff` at steps 0, 4 and 8 (two ledger lines, feet on the upper one). The
   crest survives at 40dp in all seven moods, which was the test the design had to pass.
+
+## :app — Trill everywhere else (results, progress, repertoire)
+
+- **A mood is a function of the verdict, never a second opinion about the run.** `moodFor` in
+  `ui/results/ResultTone.kt` takes a `ResultTone` and nothing else, so the bird on the results sheet
+  cannot reach past the headline into the numbers and reach a kinder conclusion than the sheet did.
+  The five tones map onto five distinct faces in quality order — Curious, Wincing, Idle, Delighted,
+  Impressed — which is why `Mixed` gets neutral company rather than sympathy: at 70% clean, a wince
+  overstates it as surely as a cheer would understate it.
+
+- **`MascotMood.isPleased` exists so the celebration gate is one predicate.** `ResultMoodTest` and
+  `ProgressGreetingTest` both police "no pleased face over evidence that did not earn it", and two
+  hand-written lists of the happy moods would eventually disagree about whether `Impressed` counts.
+  It is a `when` over the enum rather than a set, so an eighth mood fails to compile until someone
+  decides which side of the gate it falls on.
+
+- **`ProgressModel` used to hold its own `SOLID_STRENGTH = 0.8`.** Two definitions of *mastered*
+  meant `Curriculum` could pass a stage on a skill this screen would not colour as solid — the
+  `specTargeting` failure again, one module across. `bucketOf` now asks `SkillState.isSolid`, and the
+  bucket keeps its second condition (*and not due*) because dueness is about spacing rather than
+  about reading: a skill can be read reliably and still be worth revisiting today.
+
+- **A "personal best" needs four stored sessions and a difference that survives rounding.** Below
+  four, "best yet" is arithmetic on nothing (the same floor `trendOf` uses, for the same reason);
+  and two runs that both print 70% have not beaten each other on the screen Dewi is reading, so the
+  comparison is made on `percent()` rather than on the raw doubles. The line states both figures, so
+  the Impressed face is always accompanied by the evidence that earned it.
+
+- **Delighted on Progress needs *every* tracked skill solid, not some threshold of them.** A
+  proportion would need a second number nobody has justified, and "most of your skills are solid" is
+  a sentence that gets less true the more skills there are. All-or-nothing is rare, which is the
+  point: a mascot who is pleased most of the time is decoration.
+
+- **The empty Progress screen is the one place a mascot is the content.** "Nothing read yet" was a
+  plain sentence on the first screen a new user reaches, and the sleeping bird is what makes it read
+  as *not yet* rather than as *nothing here*. It is also the first-session moment for free: storing
+  one session wakes her, and no code had to detect the transition to make that happen.
+
+- **`TrillAside` and `TrillPanel` are the only two shapes she takes beside text**, held in
+  `ui/mascot` so the inline and whole-screen forms cannot drift into four slightly different
+  paddings. The aside is deliberately small (44dp) — it accompanies a refusal, and a large bird over
+  "the mic cannot hear two lines" would make a technical limit look like a scolding. Its `color`
+  defaults to `Color.Unspecified` rather than to `onSurfaceVariant` directly, because a parse failure
+  must keep the error colour it had before the bird arrived: adding a mascot to a message is not a
+  reason to downgrade its signal.
+
+- **"A skill has just gone Solid" is not derivable and is not claimed.** `SkillState` carries a
+  current strength and no history, so nothing on Progress can tell a skill that crossed the line
+  today from one that crossed it a fortnight ago — and a face that fired on every visit would be a
+  celebration of nothing. Delight is therefore attached to the state that *is* derivable, every
+  tracked skill solid at once. Detecting the crossing needs a stored previous strength (or a dated
+  milestone like `stage_progress`), which is a `:core:database` decision rather than a screen's.
+
+- **Repertoire's header bird is `Curious` and stays that way.** It is the one screen whose whole job
+  is waiting on a choice, so the mood is a property of the screen rather than of any data — which is
+  also why it is the only permanent, non-reactive placement in the app. Restraint is the point:
+  every other bird here is answering a question about stored evidence.
+
+- **What was verified on the emulator (API 35, light theme).** Empty Progress (Sleepy, 132dp),
+  populated Progress after a real 0% session (Idle, 76dp — she is *not* pleased about a bad run),
+  Repertoire header (Curious, 64dp), the polyphony refusal aside (Wincing, 44dp) and the results
+  sheet after a real 0% run (Wincing, 96dp, headline "Rough one", no bloom). The pleased faces were
+  read back from a temporary all-moods probe at 96dp rather than from an earned run, because a
+  scripted `adb` session cannot play a piece well enough to earn one.
+
+- **Cross-area, unresolved at the time of writing: `ui/practice/SessionMascot.kt` has its own
+  `runMood(result)`.** It is a second answer to "which face for a finished run" and it disagrees with
+  `moodFor` — an 88% run is `Idle` there and `Delighted` here, a 70% run is `Wincing` there and `Idle`
+  here — so the practice screen's bird and the results sheet's bird can contradict each other about
+  the same session. `runMood` should be deleted in favour of `moodFor(toneOf(result))`, which is
+  `internal` and already visible from that package (it imports `ResultTone` and `toneOf` from it
+  today). It also reaches past the tone into `result.extras`/`correct`, which is precisely the second
+  opinion `moodFor` exists to prevent.
+
+## :app — the introduction and the path
+
+- **The introduction runs once, and the thing that records it is the placement row.** There is no
+  "intro seen" flag, deliberately: every exit from `IntroductionRoute` writes a `PlacementRecord` —
+  taking the read writes `Completed`, declining writes `Skipped` — so a separate flag would be a
+  second answer to one question, and the stale one would be the one the app believed. `IntroGate`
+  therefore has three values rather than two: an **unreadable** journey resolves to `Skip`, because
+  dragging a returning reader back through the introduction on a bad row is worse than the
+  introduction being missed, and "Meet Trill again" at the foot of the path covers that case.
+
+- **`MIDDLE_LINE_STEP` is the one conversion between Trill's perch and a pitch.** `TrillOnStaff`
+  counts half-spaces from the middle line; `StaffGeometry` counts diatonic steps from the bottom
+  line. They are the same unit with different origins, four steps apart, and `StaffPitchTest` pins
+  the conversion against `StaffGeometry.stepOf` rather than against a table of note names — a table
+  would have been a second copy of the staff's geometry, which is exactly the duplication that has
+  already cost this repo two bugs.
+
+- **`FocusedSession` is one session driver used twice, not a second one.** A placement probe and a
+  stage drill both run `PracticeViewModel` + `PracticeScreen` with the app's own judge, conductor
+  and answer source; the only difference is which `PracticeWiring` answers "what should he read".
+  That identity is the whole reason a placement is allowed to seed the skill store: it measured the
+  same thing an ordinary session measures. **Knowingly duplicated:** its ~50 lines of route plumbing
+  (lifecycle pause, key taps, the results dialog) restate `PractiseRoute`'s, because that file is
+  another module's to own and the shared part is the *screen*, not the route. If both ever need the
+  same change, extract the plumbing rather than editing it twice.
+
+- **`SessionOwner` gives each focused session its own `ViewModelStore`.** Without it a probe's view
+  model either outlives the screen — still collecting taps, still holding a conductor — or never has
+  `onCleared` called at all, and the transport of a finished probe keeps running under the next one.
+  Clearing it in `onDispose` is what makes the placement's five probes five clean sessions.
+
+- **`ProbeWiring` differs from an ordinary session in exactly three ways, and each is deliberate.**
+  It reads the probe the `PlacementRead` chose rather than asking the scheduler; it forces
+  `listenFirstOn` off, because hearing the music first measures memory rather than reading; and it
+  does **not** fold the probe into the skill store. The last is the important one: the placement's
+  own conclusion is what seeds the store, and folding each probe as well would count one performance
+  twice — under two different rules, which is worse than counting it twice under one.
+
+- **Seeding goes through `SkillUpdateRule`, so there is no second write path.** `RoomSkillStore`
+  persists whatever an update rule hands back, so "these are the states now" is just a different
+  rule (`AppContainer.seedSkills`), inside the same transaction with the same refusal guard. The
+  evidence passed alongside is the probes' `SkillOutcome`s **concatenated, not merged**: the only
+  consumer sums them, so merging would be a second tally of numbers `AdaptivePlacementRead` has
+  already tallied.
+
+- **`StageAware` is a second, smaller port rather than a `focus` parameter on `chooseNext`.** The
+  first draft added `focus: PracticeFocus?` to `PracticeWiring.chooseNext`, which forced every
+  implementation — including test fakes in another module's area — to accept a narrowing it had no
+  way to honour. A fake that silently ignored it would return material from the wrong stage while
+  looking perfectly correct. Only the path ever asks "what now, on *that* rung", so only the app's
+  own wiring implements it.
+
+- **An ordinary session is narrowed to the rung Dewi stands on, and that is resolved rather than
+  passed.** `AppPracticeWiring.chooseNext` asks `Curriculum.currentStage(states)` itself. Null focus
+  means "wherever he stands" and is deliberately *not* `PracticeFocus.None` — "no narrowing at all"
+  and "narrowed to the current stage" are different requests, and only one of them is what a session
+  wants.
+
+- **The path stores no position and derives everything.** `pathOf` reads the skill states through
+  `Curriculum`; `PathRow.passedOnEpochMillis` is a dated event from `stage_progress` and never a
+  claim about today, which is why `standing` and `passedOnEpochMillis` are separate fields. A stage
+  passed out of order still reads as passed while `current` stays the first gap — held by a test,
+  because it is the case where a progress bar and a curriculum disagree.
+
+- **`Trill`'s mood on the path is about the calendar, never about quality.** Curious on a first run,
+  Sleepy when no run is going, Idle otherwise — and never Delighted, because a bird pleased on the
+  path would be pleased about nothing in particular. The same rule caught a real defect on the
+  placement summary: it showed `Impressed` after a read where every note was missed, on the grounds
+  that four skills had been *measured*. Measuring is not a result; `placedMood` now sparkles only
+  when the read actually landed above the first rung.
+
+- **The keyboard wall is docs/spec.md I3 applied to progress.** A microphone cannot hear two hands,
+  so `playableBy` forces `bothHandsActive = false` and `HandIndependence` is never tagged — meaning
+  a mic reader can never pass stage 4. `isHearableBy` is the one definition of that rule, asked by
+  the drill route (which must not propose it) and by the path (which must say so out loud). Without
+  the sign, the honest refusal becomes a silent wall, which is the failure I3 exists to prevent.
+
+- **Diagnostics has no tab.** Six tabs to fit a developer tool would crowd the five things the app is
+  for; `Destination.inBar` keeps it in the enum and out of the bar, reachable from the foot of the
+  path where a "something is wrong" tool belongs. The path leads because it is the front door: it is
+  where Dewi is on the journey and where the next session starts.
+
+- **Sessions started from the path run inside the path.** Tapping a rung does not throw him at a tab
+  — finishing it puts him back where he chose it, which is most of what makes the path feel like a
+  place rather than a menu.
+
+- **The introduction paints its own ground and its own insets.** Inside the shell a `Scaffold` does
+  both; the introduction is the whole window and nothing does, so without the `Surface` the bare
+  window background shows through — dark ink under a light theme, which is exactly how the placement
+  read looked on the emulator before it existed, with the banner under the status bar as well. Both
+  were invisible to every test and obvious in one screenshot.
+
+## :app — the practice screen and the session (2026-08-15)
+
+- **Trill is present during a read, and small.** She sits in the transport row, *below* the staff, at
+  44dp while the notation moves and 68dp when it is stopped (`animateDpAsState`, so the row never
+  jumps — it is a fixed 84dp tall). The reasoning against putting her beside the staff is the one
+  written into `MascotMood.Listening` itself: reading ahead is the whole skill, and anything moving
+  next to the notation competes for the attention the app exists to train. Below it she is company,
+  and between runs — where the eye already goes for the play button — she is allowed to be bigger.
+  She reacts only once the run ends, which is what `lastRun` is for.
+
+- **`PracticeUiState.lastRun` survives `dismiss()` and `result` does not.** The results sheet is a
+  dialog over the practice screen, so at the moment a run settles her reaction is hidden behind it;
+  the state Dewi actually sees her in is the one *after* he dismisses the sheet. Clearing the mood
+  with the sheet would leave her Curious over a run that had just gone badly. `listen()` and every
+  `load()` clear it, because a preview that reached the end is not a run she has an opinion about.
+
+- **`sessionMood` defers to `ui/results/moodFor` for a finished run.** That function is the app's one
+  mapping from a verdict to a face; a second one here disagreed with it by two whole tones (an 88%
+  run was `Idle` on one screen and `Delighted` on the other) before it was deleted. `SessionMascotTest`
+  asserts the agreement directly over every score from 0 to 12 out of 12, so the two cannot drift
+  apart again in silence.
+
+- **The setup panel folds away while the music moves, and that is not hiding a control.** "Hear it"
+  and "Try another" are actively wrong mid-run — both replace what is loaded and end the run — and
+  the input chips reload the session. Everything the panel offers is a between-runs decision, so it
+  collapses on `Running`/`CountingIn` and returns on pause or finish, which is also what gives the
+  staff its extra height at the one moment height matters. Nothing *true* is hidden: the extras
+  count, the refusal and the notice all stay.
+
+- **A run in progress is paused — and therefore saved — before anything replaces it.** `load()` now
+  begins by pausing a running conductor. Switching input, opening a piece from Repertoire or asking
+  for something else used to call `conductor.stop()` straight through `load`, so the session's
+  verdicts were dropped without ever reaching `SessionStore.save` — docs/spec.md I4 failing on three
+  ordinary routes rather than on a crash.
+
+- **A tap made before the run began is not judged in it.** `KeyboardTapSource` is a 256-deep
+  `Channel` shared by the whole app, so a key pressed while the transport was idle waits there and is
+  delivered the instant a session starts collecting — where it is judged as `Verdict.Extra`, i.e. the
+  app reporting a note Dewi did not play in that run (docs/spec.md I2). `play()` records
+  `runOpenedAtNanos` from `conductor.nanosFor(conductor.position())` immediately after `start()` and
+  after each `resume()`, and the collector drops anything stamped earlier, counted as
+  `input/notesPlayedBeforeThisRunBegan` rather than silently. The two timebases really are
+  comparable: taps carry `MotionEvent.uptimeMillis` and the Conductor runs on `System.nanoTime()`,
+  both CLOCK_MONOTONIC on Android — which is exactly what the `dewidebug tap … at=… now=…` line was
+  added to let a report check. `StaleTapsTest` was verified by deleting the guard and watching it
+  fail. The deeper fix (draining the channel when a session opens) belongs to `:core:practice`.
+
+- **A finished run turns the page back.** The last thing a run does is scroll the music off the left,
+  so the screen it *ends* on is a blank sheet — the least useful moment to show nothing. While
+  `transport == Finished` and not previewing, the staff renders from `Ticks.ZERO` with the playhead
+  at the opening note, so the whole exercise is visible with its verdict colours still on it. It does
+  not weaken docs/spec.md I1: that invariant is about the three readings agreeing *while a note is
+  being judged*, and here the transport is stopped and `judgeState` is null. Judged noteheads keep
+  their colours because `NoteStyling` only consults `position` for notes with no verdict.
+
+- **The keyboard is hidden in PLAY IT mode.** With the mic as the answer source nothing collects from
+  `KeyboardTapSource`, so every key press was a control that silently did nothing — and now it also
+  fills the tap buffer that the guard above has to throw away. `InputMode.needsKeyboard` is a `when`
+  rather than `!= Mic`, so a third adapter fails to compile until someone decides.
+
+- **The toggles are brass, never mint.** They were `tertiaryContainer` for one build, which is the
+  same mint that means *correct* on a notehead; a green chip beside a staff reads as a verdict.
+  Brass is the transport's own colour and carries no judgement.
+
+- **The stage is read for the header, and the wiring narrows the choice separately.** `StageSource`
+  is `suspend () -> Stage?`, supplied by `PractiseRoute` as `container.standingStage()` — the same
+  accessor `AppPracticeWiring` uses, so there is one derivation of "where does he stand" rather than
+  a private copy of `Curriculum.currentStage`. Null means it could not be read and the pill is absent;
+  it never falls back to "stage 1", which would be a claim about his reading drawn from a failed query.
+
+- **The header lost its `InputChip` and the reason line gained a second line.** The chip repeated the
+  TAP/MIC state that the setup panel's own chips already carry — the same fact twice on one screen —
+  and the scheduler's sentence was being cut mid-skill at one line ("…to drill treble clef, middle of
+  t…"), which is precisely the evidence docs/spec.md I5 asks Dewi to be able to *see*.
+
+- **The count-in is Trill's.** She dips on every beat (`translationY` driven by the same pulse the
+  ring uses) and goes still on the last one, where the caption says "Bar 1 on the next beat" and the
+  ring fills violet — the one brand colour carrying no verdict meaning. The beat dots exist because
+  the digit alone says how many are left but not how long the count-in *was*; `countInBeats` is
+  captured in `play()` from `conductor.countInBeatsRemaining()` rather than inferred from the highest
+  value the UI happened to observe.
+
+- **`SessionSetup` is nullable on `PracticeScreen`, and `ui/journey`'s `FocusedSession` relies on it.**
+  That screen drives its own session for a placement probe and supplies its own header; offering it
+  "something else to read" mid-measurement would corrupt what is being measured. The screen's flat
+  parameter list was kept for the same reason — it is another area's call site, and breaking it to
+  tidy my own signature would have been a change to their file by proxy.
+
+- **`SessionFakes.kt` is the test graph, extracted from `SessionReadsSettingsTest`.** Three test
+  classes in this package now need it, and the second copy would have been the duplication the DRY
+  law names outright. `FakeWiring.tapSource` is held rather than constructed per `sourceFor` call, so
+  a test can push a tap into the very source the session collects.
+
+- **What was verified on the emulator (API 35, light theme), 2026-08-15.** The idle screen with the
+  stage pill and the full reason line; the count-in card with Trill dipping (beat 3 of 4); a run
+  under way with the setup panel folded and Trill at 44dp; the results sheet over it; the finished
+  screen with the page turned back, Trill Wincing over a real 0% run and the readout in coral; the
+  PLAY IT notice; and PLAY IT with the keyboard gone. The pleased faces were not earned on the
+  device — a scripted `adb` session cannot play an exercise well — so they rest on
+  `SessionMascotTest` and on the results sheet's own device check.
+
+- **Her cost on a scrolling frame was measured, not assumed — and it is not nothing.** Back-to-back
+  `dumpsys gfxinfo` over a 14-second run on the api35 emulator, the only difference being whether
+  `Trill(sessionMood(state), …)` in `TransportCluster` was a `Spacer` of the same size:
+
+  | | total frames | janky | 50th | 90th | slow UI thread |
+  |---|---|---|---|---|---|
+  | with Trill | 459 | 418 (91%) | 81ms | 109ms | 405 |
+  | without | 504 | 276 (55%) | 65ms | 85ms | 266 |
+
+  She rebuilds a boolean-union path on every draw and her breathing invalidates every frame, so a
+  44dp bird costs roughly 16ms of median frame time *there*. Two things stop that being a verdict.
+  The baseline is already 65ms — this is a software-rendered emulator on a memory-capped WSL VM, not
+  a phone — and **no verdict depends on it**: the judge and the metronome read `Conductor`, never the
+  frame clock, so a dropped frame moves the drawn playhead and nothing else. The decision taken is to
+  keep her, because the emulator is a poor proxy for the phone and the brief asks for company during
+  the read. **If the scroll stutters on Dewi's phone, the fix is one line** — wrap that call as
+  `if (running) Spacer(Modifier.size(bird)) else Trill(…)`, which removes her for the length of a run
+  and leaves her reacting at the end, the behaviour the brief already blesses as legitimate. Re-run
+  the same A/B on the phone before changing it; do not decide it from the emulator numbers above.
+

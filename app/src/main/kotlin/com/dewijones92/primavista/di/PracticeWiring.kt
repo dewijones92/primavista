@@ -10,6 +10,7 @@ import com.dewijones92.primavista.practice.AnswerSource
 import com.dewijones92.primavista.practice.Conductor
 import com.dewijones92.primavista.practice.NoteJudgement
 import com.dewijones92.primavista.practice.PerformanceJudge
+import com.dewijones92.primavista.practice.PracticeFocus
 import com.dewijones92.primavista.practice.SkillOutcome
 import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.Polyphony
@@ -36,6 +37,17 @@ public data class PracticeSelection(
  * Android context, a database or an audio device; and one port rather than fourteen constructor
  * parameters because the session needs all of it or none of it.
  */
+/**
+ * Choosing on a named rung rather than on the one Dewi happens to be standing on.
+ *
+ * Separate from [PracticeWiring] because only the path ever wants it: handing every implementation
+ * a narrowing parameter would mean every fake had to pretend to honour it, and a fake that quietly
+ * ignored it would return material from the wrong stage while looking perfectly correct.
+ */
+public interface StageAware {
+    public suspend fun chooseWithin(focus: PracticeFocus, input: Polyphony, seed: Long): PracticeSelection
+}
+
 public interface PracticeWiring {
     public val diag: Diag
 
@@ -64,7 +76,15 @@ public interface PracticeWiring {
 
     public fun sourceFor(mode: InputMode): AnswerSource
 
-    /** The scheduler's own answer to "what now", weighted by what is weak and due. */
+    /**
+     * The scheduler's own answer to "what now", weighted by what is weak and due — and narrowed to
+     * the rung of the path Dewi is standing on, which the implementation resolves rather than the
+     * caller (docs/journey.md).
+     *
+     * Which rung is deliberately **not** a parameter here. A session asks "what now"; only the path
+     * asks "what now, on that rung", and that is [StageAware] — one caller, one extra seam, and no
+     * implementation of this port left with a narrowing it cannot honour.
+     */
     public suspend fun chooseNext(input: Polyphony, seed: Long): PracticeSelection
 
     /** Material synthesised to drill one skill. The corpus is not consulted: this is the ladder. */

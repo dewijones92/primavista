@@ -38,6 +38,7 @@ import com.dewijones92.primavista.practice.SkillOutcome
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.theme.LocalNotationColors
 import com.dewijones92.primavista.theme.TabularNumeral
+import com.dewijones92.primavista.ui.mascot.Trill
 import com.dewijones92.primavista.ui.progress.StrengthMeter
 import com.dewijones92.primavista.ui.progress.describe
 import com.dewijones92.primavista.ui.progress.meterTint
@@ -81,27 +82,29 @@ public fun ResultsSheet(
 private fun Verdict(result: SessionResult, tone: ResultTone) {
     val notation = LocalNotationColors.current
     val tint = toneTint(tone)
-    Text(
-        text = tone.headline,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
-        color = tint,
-    )
-    Spacer(Modifier.height(TIGHT_GAP))
-    Box(contentAlignment = Alignment.CenterStart) {
-        if (tone.celebrates) Bloom(notation.correct)
-        Row(verticalAlignment = Alignment.Bottom) {
-            if (tone == ResultTone.Nothing) NoPercent(tint) else CountingPercent(result.cleanliness, tint)
-            Spacer(Modifier.width(GAP))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
             Text(
-                text = headlineBasis(result),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = BASELINE_LIFT),
+                text = tone.headline,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = tint,
             )
+            Spacer(Modifier.height(TIGHT_GAP))
+            Box(contentAlignment = Alignment.CenterStart) {
+                if (tone.celebrates) Bloom(notation.correct)
+                if (tone == ResultTone.Nothing) NoPercent(tint) else CountingPercent(result.cleanliness, tint)
+            }
         }
+        Spacer(Modifier.width(GAP))
+        Trill(moodFor(tone), Modifier.size(TRILL_SIZE))
     }
-    Spacer(Modifier.height(TIGHT_GAP))
+    Text(
+        text = headlineBasis(result),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(GAP))
     Text(
         text = supportOf(result, tone),
         style = MaterialTheme.typography.bodyMedium,
@@ -258,6 +261,6 @@ private val SHEET_PADDING = 20.dp
 private val SECTION_GAP = 18.dp
 private val GAP = 10.dp
 private val TIGHT_GAP = 4.dp
-private val BASELINE_LIFT = 6.dp
+private val TRILL_SIZE = 96.dp
 private val METER_WIDTH = 84.dp
 private val BLOOM_SIZE = 180.dp

@@ -82,7 +82,7 @@ private fun StrengthArc(strength: Double) {
         label = "strength-arc",
     )
     val track = MaterialTheme.colorScheme.surfaceContainerHighest
-    val tint = meterTint(strength, SOLID_STRENGTH, SHAKY_STRENGTH)
+    val tint = meterTint(strength, SkillState.SOLID_STRENGTH, SHAKY_STRENGTH)
     Box(Modifier.size(ARC_SIZE), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val stroke = Stroke(width = ARC_STROKE.toPx(), cap = StrokeCap.Round)

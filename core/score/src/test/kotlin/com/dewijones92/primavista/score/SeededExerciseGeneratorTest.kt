@@ -171,11 +171,24 @@ class SeededExerciseGeneratorTest {
     }
 
     @Test
-    fun `a rhythm figure that cannot fill the bar alone is widened rather than left short`() {
+    fun `a figure longer than the bar moves the metre rather than being unreadable`() {
         val figure = SkillTag.RhythmFigure(NoteSymbol.Whole, 0, 1)
         val targeted = generator.specTargeting(figure, spec(time = TimeSignature(3, 4)))
+
         assertTrue(targeted.symbols.contains(NoteSymbol.Whole))
-        assertTrue(targeted.symbols.size > 1)
+        assertEquals(TimeSignature(4, 4), targeted.time)
+        val score = generator.generate(SEED, targeted)
+        assertTrue(score.notes.any { it.duration.symbol == NoteSymbol.Whole })
+        assertBarsAddUp(targeted, score)
+    }
+
+    @Test
+    fun `a figure the bar can host keeps the metre it was given`() {
+        val dottedHalf = SkillTag.RhythmFigure(NoteSymbol.Half, 1, 1)
+        val targeted = generator.specTargeting(dottedHalf, spec())
+
+        assertEquals(TimeSignature.FourFour, targeted.time)
+        assertTrue(targeted.symbols.contains(NoteSymbol.Half))
         assertBarsAddUp(targeted, generator.generate(SEED, targeted))
     }
 
@@ -306,50 +319,6 @@ class SeededExerciseGeneratorTest {
             assertEquals(spec.clefs, measure.clefs)
         }
     }
-
-    private fun assertBarsAddUp(spec: DifficultySpec, score: Score) {
-        for (measure in score.measures) {
-            val barEnd = measure.start + measure.time.measureTicks
-            for (staff in spec.staves) {
-                val inBar = score.events.filter { it.staff == staff && it.onset >= measure.start && it.onset < barEnd }
-                assertTrue("bar ${measure.index + 1} of $staff is empty", inBar.isNotEmpty())
-                assertEquals(
-                    "bar ${measure.index + 1} of $staff",
-                    measure.time.measureTicks.value,
-                    inBar.sumOf { it.duration.ticks.value },
-                )
-            }
-        }
-    }
-
-    private fun spec(
-        bars: Int = 4,
-        time: TimeSignature = TimeSignature.FourFour,
-        key: KeySignature = KeySignature.C,
-        symbols: Set<NoteSymbol> = setOf(NoteSymbol.Half, NoteSymbol.Quarter, NoteSymbol.Eighth),
-        maxDots: Int = 0,
-        allowTuplets: Boolean = false,
-        allowedAlterations: Set<Alter> = setOf(Alter.Natural),
-        maxLeapSemitones: Int = 7,
-        bothHandsActive: Boolean = true,
-    ) = DifficultySpec(
-        staves = listOf(Staff.Upper, Staff.Lower),
-        clefs = mapOf(Staff.Upper to Clef.Treble, Staff.Lower to Clef.Bass),
-        key = key,
-        time = time,
-        bars = bars,
-        range = mapOf(
-            Staff.Upper to Midi(60)..Midi(79),
-            Staff.Lower to Midi(41)..Midi(60),
-        ),
-        symbols = symbols,
-        maxDots = maxDots,
-        allowTuplets = allowTuplets,
-        allowedAlterations = allowedAlterations,
-        maxLeapSemitones = maxLeapSemitones,
-        tempoBpm = 80,
-        bothHandsActive = bothHandsActive,
-    )
 
     private companion object {
         const val SEED = 20260807L

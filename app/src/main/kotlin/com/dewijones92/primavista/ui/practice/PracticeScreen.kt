@@ -2,27 +2,24 @@ package com.dewijones92.primavista.ui.practice
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -39,21 +36,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.dewijones92.primavista.di.InputMode
 import com.dewijones92.primavista.notation.GlyphMetrics
 import com.dewijones92.primavista.notation.StaffSpaces
 import com.dewijones92.primavista.notation.StaffSystem
@@ -61,9 +52,9 @@ import com.dewijones92.primavista.practice.RefusalReason
 import com.dewijones92.primavista.practice.TransportState
 import com.dewijones92.primavista.score.Midi
 import com.dewijones92.primavista.score.Score
-import com.dewijones92.primavista.theme.CountInNumeral
+import com.dewijones92.primavista.score.Ticks
 import com.dewijones92.primavista.theme.LocalNotationColors
-import com.dewijones92.primavista.theme.TabularNumeral
+import com.dewijones92.primavista.ui.mascot.Trill
 import com.dewijones92.primavista.ui.staff.NoteStyling
 import com.dewijones92.primavista.ui.staff.PinnedFurniture
 import com.dewijones92.primavista.ui.staff.StaffCanvas
@@ -85,6 +76,7 @@ public fun PracticeScreen(
     modifier: Modifier = Modifier,
     /** Null hides the metronome and echo chips: a control nothing can act on must not be shown. */
     onToggle: ((PracticeToggle) -> Unit)? = null,
+    setup: SessionSetup? = null,
 ) {
     // The frame clock drives the session. It is the UI's job to decide *when to look*; the
     // Conductor remains the only thing that knows what time it is (see .claude/CODE-NOTES.md).
@@ -97,8 +89,8 @@ public fun PracticeScreen(
 
     Column(modifier.fillMaxSize()) {
         PracticeHeader(state)
-        ProgressRail(state)
-        state.notice?.let { NoticeBanner(it) }
+        SetupPanel(state, setup, onToggle)
+        SessionNotice(state.notice, setup?.onDismissNotice ?: {})
 
         Box(
             Modifier
@@ -107,13 +99,12 @@ public fun PracticeScreen(
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
             ScrollingStaff(state, metrics)
-            CountInOverlay(state.countInBeatsRemaining)
+            CountInOverlay(state.countInBeatsRemaining, state.countInBeats)
         }
 
-        onToggle?.let { SessionChips(state, it) }
-        TransportBar(state, onStart, onPause, onResume)
+        TransportCluster(state, onStart, onPause, onResume)
 
-        if (state.refusal == null) {
+        if (state.refusal == null && state.input.needsKeyboard) {
             KeyboardPanel(keyboardRange(state.score), onKeyPressed)
         }
     }
@@ -152,6 +143,7 @@ private fun ScrollingStaff(state: PracticeUiState, metrics: GlyphMetrics) {
         val widthFit = (maxWidth.value / (gutter + MIN_READ_AHEAD_SPACES)).toFloat()
         val staffSpace = minOf(heightFit, widthFit).coerceIn(MIN_STAFF_SPACE_DP, MAX_STAFF_SPACE_DP)
         val viewport = (maxWidth.value / staffSpace).toDouble()
+        val shown = if (state.reviewing) Ticks.ZERO else state.position
         val playhead = playheadOf(state, system)
         val anchored = max(viewport * PLAYHEAD_SCREEN_FRACTION, gutter)
         val scroll = (playhead.value - anchored).coerceAtLeast(0.0)
@@ -177,12 +169,12 @@ private fun ScrollingStaff(state: PracticeUiState, metrics: GlyphMetrics) {
                 staffSpace = staffSpace.dp,
                 scrollX = StaffSpaces(scroll),
                 playheadX = playhead,
-                pinnedAt = state.position,
+                pinnedAt = shown,
                 appearance = NoteStyling(
                     verdicts = state.verdicts,
                     landings = landings,
                     colors = notation,
-                    position = state.position,
+                    position = shown,
                     reveal = reveal.value,
                     systemWidth = system.width.value,
                 )::of,
@@ -193,12 +185,25 @@ private fun ScrollingStaff(state: PracticeUiState, metrics: GlyphMetrics) {
 
 /**
  * Before the transport starts nothing has sampled the Conductor, so the state's playhead is still
- * zero; the layout's own first note position is the honest answer until it moves.
+ * zero; the layout's own first note position is the honest answer until it moves. A finished run
+ * goes back to the same place — see `.claude/CODE-NOTES.md`.
  */
-private fun playheadOf(state: PracticeUiState, system: StaffSystem): StaffSpaces =
-    state.playheadX.takeIf { it.value > 0.0 }
-        ?: system.measureAnchors.firstOrNull()?.noteAreaX
-        ?: StaffSpaces.ZERO
+private fun playheadOf(state: PracticeUiState, system: StaffSystem): StaffSpaces {
+    val opening = system.measureAnchors.firstOrNull()?.noteAreaX ?: StaffSpaces.ZERO
+    if (state.reviewing) return opening
+    return state.playheadX.takeIf { it.value > 0.0 } ?: opening
+}
+
+/** A keyboard the session is not collecting from is a control that silently does nothing. */
+private val InputMode.needsKeyboard: Boolean
+    get() = when (this) {
+        InputMode.Tap -> true
+        InputMode.Mic -> false
+    }
+
+/** The run is over and nothing is being judged, so the page may be turned back to look at it. */
+private val PracticeUiState.reviewing: Boolean
+    get() = transport == TransportState.Finished && !previewing
 
 @Composable
 private fun EmptyStaffCard(state: PracticeUiState) {
@@ -224,226 +229,12 @@ private fun EmptyStaffCard(state: PracticeUiState) {
     }
 }
 
-/** Whatever the session needs to say that is not a verdict — a refusal already has its own dialog. */
-@Composable
-private fun NoticeBanner(notice: String) {
-    Text(
-        text = notice,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSecondaryContainer,
-        modifier = Modifier
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-    )
-}
-
-@Composable
-private fun SessionChips(state: PracticeUiState, onToggle: (PracticeToggle) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        ToggleChip("Metronome", state.metronomeOn) { onToggle(PracticeToggle.Metronome) }
-        ToggleChip("Echo", state.echoOn) { onToggle(PracticeToggle.Echo) }
-        if (state.previewing) {
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = "PLAYING FOR YOU",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.secondary,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ToggleChip(label: String, on: Boolean, onClick: () -> Unit) {
-    val container = if (on) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceContainerHighest
-    }
-    val content = if (on) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelMedium,
-        color = content,
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(container)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-            .testTag("toggle-$label"),
-    )
-}
-
-@Composable
-private fun PracticeHeader(state: PracticeUiState) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = state.score?.title ?: "PrimaVista",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            listOfNotNull(
-                state.score?.composer?.takeIf { it.isNotEmpty() },
-                state.choiceSummary.takeIf { it.isNotEmpty() },
-            ).forEach { line ->
-                Text(
-                    text = line,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        Spacer(Modifier.width(10.dp))
-        InputChip(state.inputLabel)
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = "${state.tempoBpm} bpm",
-            style = TabularNumeral,
-            color = MaterialTheme.colorScheme.primary,
-        )
-    }
-}
-
-@Composable
-private fun InputChip(label: String) {
-    if (label.isEmpty()) return
-    Row(
-        Modifier
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.secondaryContainer)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (label == "mic") {
-            Icon(
-                Icons.Rounded.Mic,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                modifier = Modifier.size(14.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-        }
-        Text(
-            text = label.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
-        )
-    }
-}
-
-/** How far through the piece, taken straight from the position rather than animated separately. */
-@Composable
-private fun ProgressRail(state: PracticeUiState) {
-    val end = state.score?.endsAt?.value ?: 0L
-    val fraction = if (end <= 0L) 0f else (state.position.value.toFloat() / end).coerceIn(0f, 1f)
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .height(RAIL_HEIGHT)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        if (fraction > 0f) {
-            Box(
-                Modifier
-                    .fillMaxWidth(fraction)
-                    .fillMaxHeight()
-                    .clip(CircleShape)
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.secondary,
-                                MaterialTheme.colorScheme.primary,
-                            ),
-                        ),
-                    ),
-            )
-        }
-    }
-}
-
 /**
- * The count-in is shown, not just heard, and it pulses per beat.
- *
- * A purely audible count-in is useless with the volume down, and a static number gives no sense of
- * pace — starting to read without knowing when bar 1 arrives makes the first note late every time,
- * which the judge would faithfully record as Dewi's mistake. The last beat is violet and filled so
- * bar 1 is never a surprise; violet because no verdict colour may mean "ready".
+ * Trill, the count so far, and the one button. She leans in between runs and draws back while the
+ * notation moves — see `.claude/CODE-NOTES.md`.
  */
 @Composable
-private fun CountInOverlay(beatsRemaining: Int) {
-    val pulse = remember { Animatable(1f) }
-    LaunchedEffect(beatsRemaining) {
-        if (beatsRemaining > 0) {
-            pulse.snapTo(0f)
-            pulse.animateTo(1f, tween(COUNT_IN_PULSE_MS, easing = LinearOutSlowInEasing))
-        }
-    }
-    if (beatsRemaining <= 0) return
-
-    val last = beatsRemaining == 1
-    val accent = if (last) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
-    val scrim = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = COUNT_IN_SCRIM_ALPHA)
-    val progress = pulse.value
-
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .size(COUNT_IN_SIZE)
-                .graphicsLayer {
-                    val scale = COUNT_IN_MAX_SCALE - (COUNT_IN_MAX_SCALE - COUNT_IN_MIN_SCALE) * progress
-                    scaleX = scale
-                    scaleY = scale
-                    alpha = 1f - COUNT_IN_FADE * progress * progress
-                }
-                .drawBehind { drawCountInBadge(scrim, accent, 1f - progress, last) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(text = beatsRemaining.toString(), style = CountInNumeral, color = accent)
-        }
-    }
-}
-
-private fun DrawScope.drawCountInBadge(scrim: Color, accent: Color, sweep: Float, last: Boolean) {
-    val stroke = COUNT_IN_STROKE_FRACTION * size.minDimension
-    val radius = (size.minDimension - stroke) / 2f
-    drawCircle(color = scrim, radius = radius)
-    if (last) drawCircle(color = accent.copy(alpha = COUNT_IN_DISC_ALPHA), radius = radius)
-    drawArc(
-        color = accent,
-        startAngle = COUNT_IN_ARC_START,
-        sweepAngle = if (last) FULL_TURN_DEGREES else FULL_TURN_DEGREES * sweep,
-        useCenter = false,
-        topLeft = Offset(center.x - radius, center.y - radius),
-        size = Size(radius * 2, radius * 2),
-        style = Stroke(width = stroke, cap = StrokeCap.Round),
-    )
-}
-
-@Composable
-private fun TransportBar(
+private fun TransportCluster(
     state: PracticeUiState,
     onStart: () -> Unit,
     onPause: () -> Unit,
@@ -451,14 +242,19 @@ private fun TransportBar(
 ) {
     val running = state.transport == TransportState.Running ||
         state.transport == TransportState.CountingIn
+    val bird by animateDpAsState(if (running) TRILL_READING else TRILL_RESTING, label = "trill")
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .height(TRANSPORT_ROW)
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ScoreReadout(state)
+        Trill(sessionMood(state), Modifier.size(bird).testTag("trill"))
+        Box(Modifier.weight(1f)) {
+            if (state.previewing) PreviewReadout() else ScoreReadout(state)
+        }
         Box(contentAlignment = Alignment.Center) {
             Spacer(
                 Modifier
@@ -483,7 +279,7 @@ private fun TransportBar(
                 Icon(
                     imageVector = if (running) Icons.Rounded.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (running) "Pause" else "Start",
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(30.dp),
                 )
             }
         }
@@ -499,6 +295,23 @@ private fun DrawScope.drawTransportGlow(diameter: Float) {
         ),
         radius = diameter * TRANSPORT_GLOW_SCALE,
     )
+}
+
+/** A listen produces no verdicts, so it must never look like a score. */
+@Composable
+private fun PreviewReadout() {
+    Column {
+        Text(
+            text = "PLAYING FOR YOU",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.secondary,
+        )
+        Text(
+            text = "nothing is being judged",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
@@ -605,26 +418,18 @@ private const val SEMITONES = 12
 private const val KEYBOARD_DEFAULT_LOWEST = 48
 private const val KEYBOARD_DEFAULT_HIGHEST = 83
 private const val KEYBOARD_MINIMUM_SEMITONES = 36
-private const val COUNT_IN_PULSE_MS = 380
-private const val COUNT_IN_MAX_SCALE = 1.22f
-private const val COUNT_IN_MIN_SCALE = 0.88f
-private const val COUNT_IN_FADE = 0.45f
-private const val COUNT_IN_STROKE_FRACTION = 0.07f
-private const val COUNT_IN_DISC_ALPHA = 0.22f
-private const val COUNT_IN_SCRIM_ALPHA = 0.96f
-private const val COUNT_IN_ARC_START = -90f
-private const val FULL_TURN_DEGREES = 360f
 private const val TRANSPORT_GLOW_SCALE = 0.95f
 
 private val BRASS_GLOW = Color(0x26E8A13C)
 private val STAFF_CORNER = 20.dp
 private val STAFF_ELEVATION = 6.dp
 private val EMPTY_STAFF_HEIGHT = 220.dp
-private val RAIL_HEIGHT = 4.dp
 private val FELT_HEIGHT = 2.dp
 private val FALLBOARD_SHADOW = 7.dp
 private val FALLBOARD_SHADOW_COLOR = Color(0x40000000)
-private val COUNT_IN_SIZE = 152.dp
-private val TRANSPORT_SIZE = 62.dp
-private val TRANSPORT_GLOW_SIZE = 92.dp
+private val TRANSPORT_ROW = 84.dp
+private val TRANSPORT_SIZE = 64.dp
+private val TRANSPORT_GLOW_SIZE = 94.dp
+private val TRILL_RESTING = 68.dp
+private val TRILL_READING = 44.dp
 private val KEYBOARD_HEIGHT = 150.dp

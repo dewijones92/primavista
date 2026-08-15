@@ -14,18 +14,27 @@ import com.dewijones92.primavista.common.Diag
 import com.dewijones92.primavista.common.RingBufferDiag
 import com.dewijones92.primavista.data.AssetGlyphMetricsSource
 import com.dewijones92.primavista.database.DatabaseOpening
+import com.dewijones92.primavista.database.PracticeSettings
 import com.dewijones92.primavista.database.PrimaVistaDatabase
+import com.dewijones92.primavista.database.RoomJourneyStore
 import com.dewijones92.primavista.database.RoomSessionStore
 import com.dewijones92.primavista.database.RoomSettingsStore
 import com.dewijones92.primavista.database.RoomSkillStore
+import com.dewijones92.primavista.database.SkillUpdateRule
 import com.dewijones92.primavista.notation.BravuraGlyphMetrics
 import com.dewijones92.primavista.notation.ClassicalStaffLayout
 import com.dewijones92.primavista.pitch.YinNoteTracker
+import com.dewijones92.primavista.practice.AdaptivePlacementRead
 import com.dewijones92.primavista.practice.AnswerSource
 import com.dewijones92.primavista.practice.Conductor
+import com.dewijones92.primavista.practice.Curriculum
 import com.dewijones92.primavista.practice.KeyboardTapSource
 import com.dewijones92.primavista.practice.PerformanceJudge
+import com.dewijones92.primavista.practice.PlacementRead
+import com.dewijones92.primavista.practice.SkillOutcome
+import com.dewijones92.primavista.practice.SkillState
 import com.dewijones92.primavista.practice.SpacedPracticeScheduler
+import com.dewijones92.primavista.practice.Stage
 import com.dewijones92.primavista.practice.TempoConductor
 import com.dewijones92.primavista.practice.Tolerances
 import com.dewijones92.primavista.practice.WindowedJudge
@@ -35,6 +44,7 @@ import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.Score
 import com.dewijones92.primavista.score.SeededExerciseGenerator
 import com.dewijones92.primavista.score.TimeSignature
+import java.time.ZoneId
 
 /**
  * The whole object graph, wired by hand. Construction is code, so a missing dependency is a compile
@@ -101,6 +111,15 @@ public class AppContainer(private val context: Context) {
     public val scheduler: SpacedPracticeScheduler =
         SpacedPracticeScheduler(exerciseGenerator::specTargeting)
 
+    // --- the path -------------------------------------------------------------------------------
+
+    public val curriculum: Curriculum = Curriculum.Standard
+
+    public val placementRead: PlacementRead = AdaptivePlacementRead(curriculum)
+
+    /** Supplied rather than read inside the fold, so two adjacent reads cannot disagree after a flight. */
+    public val zone: ZoneId get() = ZoneId.systemDefault()
+
     // --- input ----------------------------------------------------------------------------------
 
     public val tapSource: KeyboardTapSource = KeyboardTapSource()
@@ -140,6 +159,14 @@ public class AppContainer(private val context: Context) {
     /** Asked before offering PLAY IT, so the app never opens a record that would return silence. */
     public fun microphoneGranted(): Boolean = microphonePermission.isGranted()
 
+    /** What a session would open on right now: the stored choice, met by the permission it has today. */
+    public suspend fun currentInput(): InputMode =
+        openingInput(settingsStore?.settings() ?: PracticeSettings(), microphoneGranted()).mode
+
+    /** Where the curriculum says Dewi stands, read fresh. There is no stored answer to this. */
+    public suspend fun standingStage(): Stage =
+        curriculum.currentStage(skillStore?.states().orEmpty())
+
     // --- storage --------------------------------------------------------------------------------
 
     /**
@@ -165,8 +192,46 @@ public class AppContainer(private val context: Context) {
         database?.let { RoomSettingsStore(it, diag) }
     }
 
+    public val journeyStore: RoomJourneyStore? by lazy { database?.let { RoomJourneyStore(it, diag) } }
+
+    private val wholeWiring: AppPracticeWiring by lazy { AppPracticeWiring(this) }
+
     /** One session's worth of the graph, so the view model takes a port rather than fourteen things. */
-    public val practiceWiring: PracticeWiring by lazy { AppPracticeWiring(this) }
+    public val practiceWiring: PracticeWiring get() = wholeWiring
+
+    public val journeyWiring: JourneyWiring by lazy { AppJourneyWiring(this) }
+
+    /** One rung's worth of the same graph. Only the narrowing differs — see `PracticeWirings.kt`. */
+    public fun practiceWiringFor(stage: Stage): PracticeWiring = StagePracticeWiring(wholeWiring, stage)
+
+    public fun probeWiring(probe: () -> PracticeSelection?): PracticeWiring = ProbeWiring(wholeWiring, probe)
+
+    /**
+     * Writes what a placement measured over whatever is already stored.
+     *
+     * The store persists what an update rule hands back, so seeding is that rule saying "these are
+     * the states now" — which is why there is no second write path and no second transaction. See
+     * `.claude/CODE-NOTES.md`.
+     */
+    public suspend fun seedSkills(seed: List<SkillState>, evidence: List<SkillOutcome>, nowEpochMillis: Long) {
+        val opened = database
+        if (opened == null || seed.isEmpty() || evidence.isEmpty()) {
+            diag.event(
+                "journey",
+                "no skills seeded [database=${opened != null} seeding=${seed.size}states " +
+                    "evidence=${evidence.size}outcomes]",
+            )
+            return
+        }
+        val replaced = seed.associateBy { it.tag }
+        val rule = SkillUpdateRule { before, _, _ -> before.filterNot { it.tag in replaced } + seed }
+        RoomSkillStore(opened, rule, diag).record(evidence, nowEpochMillis)
+        diag.event(
+            "journey",
+            "seeded ${seed.size} skill states from the placement read, " +
+                "${seed.count { it.isSolid }} of them solid, at now=$nowEpochMillis",
+        )
+    }
 
     public fun release() {
         tonePlayer.release()

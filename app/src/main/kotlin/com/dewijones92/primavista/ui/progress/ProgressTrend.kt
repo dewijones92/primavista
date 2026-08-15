@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dewijones92.primavista.database.StoredReading
 import com.dewijones92.primavista.ui.UnreadableNote
+import com.dewijones92.primavista.ui.mascot.TrillPanel
 
 /**
  * Accuracy of each stored session, oldest to newest. One bar per session and nothing smoothed or
@@ -117,21 +120,23 @@ private fun Caption(text: String) {
     )
 }
 
-/** Nothing read yet, said deliberately rather than as a blank screen. */
+/** Nothing read yet, said deliberately rather than as a blank screen — and Trill dozing through it. */
 @Composable
-internal fun EmptyProgress(sessions: StoredReading<List<SessionPoint>>?, modifier: Modifier) {
+internal fun EmptyProgress(
+    greeting: ProgressGreeting,
+    sessions: StoredReading<List<SessionPoint>>?,
+    modifier: Modifier,
+) {
     Column(
-        modifier.fillMaxSize().padding(SCREEN_PADDING),
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(SCREEN_PADDING),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Nothing read yet", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(TIGHT_GAP))
-        Text(
-            text = "Play a piece through and every note you read will be graded into a reading " +
-                "skill here — which clef, which region, which rhythm.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        TrillPanel(
+            mood = greeting.mood,
+            title = greeting.line,
+            body = "Trill is having a nap. Play a piece through and every note you read gets " +
+                "graded into a reading skill here — which clef, which region, which rhythm.",
         )
         Spacer(Modifier.height(CARD_PADDING))
         TrendStrip(sessions)

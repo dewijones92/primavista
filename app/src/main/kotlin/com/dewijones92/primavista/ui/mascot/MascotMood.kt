@@ -42,6 +42,19 @@ public enum class MascotMood {
 }
 
 /**
+ * Whether this face is pleased *about Dewi's reading*, which is the only claim the app is not
+ * allowed to make loosely. One definition, so a screen choosing a mood and a test policing that
+ * choice cannot disagree about which faces count as celebration. See `.claude/CODE-NOTES.md`.
+ */
+public val MascotMood.isPleased: Boolean
+    get() = when (this) {
+        MascotMood.Delighted, MascotMood.Impressed -> true
+        MascotMood.Idle, MascotMood.Listening, MascotMood.Wincing,
+        MascotMood.Sleepy, MascotMood.Curious,
+        -> false
+    }
+
+/**
  * How a mascot is drawn. A plain composable lambda rather than an interface, so a mascot is one
  * top-level function and a screen can take one without knowing which.
  *

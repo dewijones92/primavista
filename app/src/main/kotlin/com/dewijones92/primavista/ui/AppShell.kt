@@ -1,5 +1,6 @@
 package com.dewijones92.primavista.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ContentTransform
@@ -57,11 +58,15 @@ import com.dewijones92.primavista.ui.repertoire.PracticeRequest
 import com.dewijones92.primavista.ui.settings.SettingsRoute
 
 /**
+ * [path] is handed the shell's own navigation because it is the app's front door: the diagnostics
+ * report has no tab of its own, so the one place that can reach it is the bottom of the path.
+ *
  * [settings] carries a default rather than being supplied by the activity like its siblings, so the
  * Settings destination could be added without editing `MainActivity`. See `.claude/CODE-NOTES.md`.
  */
 @Composable
 public fun AppShell(
+    path: @Composable (open: (Destination) -> Unit) -> Unit,
     practise: @Composable () -> Unit,
     repertoire: @Composable () -> Unit,
     progress: @Composable () -> Unit,
@@ -69,10 +74,13 @@ public fun AppShell(
     modifier: Modifier = Modifier,
     settings: @Composable () -> Unit = { SettingsRoute() },
 ) {
-    var current by rememberSaveable { mutableStateOf(Destination.Practise) }
+    var current by rememberSaveable { mutableStateOf(Destination.Path) }
 
     val requests = PracticeRequest.count
     LaunchedEffect(requests) { if (requests > 0) current = Destination.Practise }
+
+    // Anywhere but the path, back returns to it rather than leaving the app.
+    BackHandler(current != Destination.Path) { current = Destination.Path }
 
     Scaffold(
         modifier = modifier,
@@ -85,6 +93,7 @@ public fun AppShell(
         ) { destination ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 when (destination) {
+                    Destination.Path -> path { current = it }
                     Destination.Practise -> practise()
                     Destination.Repertoire -> repertoire()
                     Destination.Progress -> progress()
@@ -130,7 +139,7 @@ private fun DestinationBar(current: Destination, onSelect: (Destination) -> Unit
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(ITEM_GAP),
         ) {
-            Destination.entries.forEach { destination ->
+            Destination.Tabs.forEach { destination ->
                 val selected = destination == current
                 val expansion by animateFloatAsState(
                     targetValue = if (selected) 1f else 0f,

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.dewijones92.primavista.database.StoredReading
 import com.dewijones92.primavista.practice.SkillState
 import com.dewijones92.primavista.theme.TabularNumeral
+import com.dewijones92.primavista.ui.mascot.Trill
 
 /**
  * What the app believes about Dewi's reading, skill by skill, arranged so it answers the three
@@ -51,8 +53,9 @@ public fun ProgressScreen(
     describe: (SkillState) -> String,
     modifier: Modifier = Modifier,
 ) {
+    val greeting = remember(states, sessions) { greetingFor(states, pointsOf(sessions)) }
     if (states.isEmpty()) {
-        EmptyProgress(sessions, modifier)
+        EmptyProgress(greeting, sessions, modifier)
         return
     }
 
@@ -66,7 +69,7 @@ public fun ProgressScreen(
         contentPadding = PaddingValues(SCREEN_PADDING),
         verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
-        item { ProgressHeader(states) }
+        item { ProgressHeader(greeting) }
         item { StrengthHero(states, buckets) }
         item { TrendStrip(sessions) }
 
@@ -96,19 +99,26 @@ public fun ProgressScreen(
     }
 }
 
+/** Trill's face is the greeting's, and the greeting is derived from the same evidence as the rest. */
 @Composable
-private fun ProgressHeader(states: List<SkillState>) {
-    Column {
-        Text("Progress", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = "${states.size} reading skill${if (states.size == 1) "" else "s"} tracked, " +
-                "every one of them from notes this app put in front of you.",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+private fun ProgressHeader(greeting: ProgressGreeting) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Progress", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = greeting.line,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(GAP))
+        Trill(greeting.mood, Modifier.size(HEADER_BIRD))
     }
 }
+
+private fun pointsOf(sessions: StoredReading<List<SessionPoint>>?): List<SessionPoint> =
+    (sessions as? StoredReading.Readable)?.value.orEmpty()
 
 @Composable
 private fun BucketHeader(
@@ -159,7 +169,7 @@ private fun SkillStateRow(state: SkillState, nowEpochMillis: Long, label: String
         Spacer(Modifier.width(GAP))
         StrengthMeter(
             value = state.strength,
-            tint = meterTint(state.strength, SOLID_STRENGTH, SHAKY_STRENGTH),
+            tint = meterTint(state.strength, SkillState.SOLID_STRENGTH, SHAKY_STRENGTH),
             modifier = Modifier.width(METER_WIDTH),
         )
         Spacer(Modifier.width(GAP))
@@ -172,6 +182,7 @@ private fun SkillStateRow(state: SkillState, nowEpochMillis: Long, label: String
 }
 
 private const val SHAKY_STRENGTH = 0.5
+private val HEADER_BIRD = 76.dp
 private val SCREEN_PADDING = 16.dp
 private val SECTION_GAP = 8.dp
 private val ROW_GAP = 10.dp

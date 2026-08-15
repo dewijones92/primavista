@@ -41,6 +41,10 @@ public sealed interface SkillTag {
     public data object HandIndependence : SkillTag
 }
 
+/** The one mapping from a written duration to the figure it asks you to read. */
+internal val Duration.figure: SkillTag.RhythmFigure
+    get() = SkillTag.RhythmFigure(symbol, dots, tupletNumerator)
+
 /**
  * Derives the skills a score exercises. One derivation, so a piece's difficulty and a note's
  * verdict can never disagree about what was being tested.

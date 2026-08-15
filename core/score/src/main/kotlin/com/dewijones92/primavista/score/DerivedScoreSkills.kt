@@ -62,7 +62,7 @@ public class DerivedScoreSkills : ScoreSkills {
         val skills = mutableSetOf<SkillTag>(
             SkillTag.ClefRegion(clef, bandOf(clef, note.pitch)),
             SkillTag.KeyReading(measure.key.fifths),
-            SkillTag.RhythmFigure(note.duration.symbol, note.duration.dots, note.duration.tupletNumerator),
+            note.duration.figure,
         )
         val legerLines = legerLines(clef, note.pitch)
         if (legerLines != 0) skills += SkillTag.LegerLines(clef, abs(legerLines), above = legerLines > 0)

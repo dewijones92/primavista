@@ -11,11 +11,14 @@ import com.dewijones92.primavista.practice.Conductor
 import com.dewijones92.primavista.practice.NoteJudgement
 import com.dewijones92.primavista.practice.PerformanceJudge
 import com.dewijones92.primavista.practice.PracticeChoice
+import com.dewijones92.primavista.practice.PracticeFocus
 import com.dewijones92.primavista.practice.SkillOutcome
 import com.dewijones92.primavista.practice.SpacedPracticeScheduler
 import com.dewijones92.primavista.score.Corpus
 import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.DifficultySpec
+import com.dewijones92.primavista.score.ExerciseGenerator
+import com.dewijones92.primavista.score.MusicXmlParser
 import com.dewijones92.primavista.score.MusicXmlResult
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.Score
@@ -31,7 +34,7 @@ import kotlinx.coroutines.withContext
 private const val TAG = "ladder"
 
 /** [PracticeWiring] over the real [AppContainer]. */
-public class AppPracticeWiring(private val container: AppContainer) : PracticeWiring {
+public class AppPracticeWiring(private val container: AppContainer) : PracticeWiring, StageAware {
 
     override val diag: Diag get() = container.diag
     override val layout: StaffLayout get() = container.staffLayout
@@ -54,37 +57,53 @@ public class AppPracticeWiring(private val container: AppContainer) : PracticeWi
 
     override fun sourceFor(mode: InputMode): AnswerSource = container.sourceFor(mode)
 
-    override suspend fun chooseNext(input: Polyphony, seed: Long): PracticeSelection {
+    override suspend fun chooseNext(input: Polyphony, seed: Long): PracticeSelection =
+        choose(input, seed, focus = null)
+
+    override suspend fun chooseWithin(focus: PracticeFocus, input: Polyphony, seed: Long): PracticeSelection =
+        choose(input, seed, focus)
+
+    private suspend fun choose(input: Polyphony, seed: Long, focus: PracticeFocus?): PracticeSelection {
         val scores = corpus()
         val summaries = scores.map { it.summarise(container.scoreSkills) }
         val states = withContext(Dispatchers.IO) { container.skillStore?.states().orEmpty() }
         val now = nowEpochMillis()
-        val choice = container.scheduler.next(summaries, states, input, now, seed)
+        val standing = container.curriculum.currentStage(states)
+        val narrowing = focus ?: standing.focus
+        val choice = container.scheduler.next(summaries, states, input, now, seed, narrowing)
         diag.event(
             TAG,
             "next -> ${describeChoice(choice)} [input=$input corpus=${summaries.size} " +
                 "skills=${states.size} due=${states.count { it.isDue(now) }} " +
-                "weakest=${states.minByOrNull { it.strength }?.strength} seed=$seed now=$now]",
+                "weakest=${states.minByOrNull { it.strength }?.strength} seed=$seed now=$now " +
+                "stage=${standing.id.number}'${standing.title}' " +
+                "focus=${if (focus == null) "the rung he stands on" else "asked for"}:${narrowing.skills.size}skills]",
         )
         return when (choice) {
-            is PracticeChoice.Generated -> generated(choice.seed, choice.spec, choice.targeting)
+            is PracticeChoice.Generated ->
+                container.exerciseGenerator.generated(choice.seed, choice.spec, choice.targeting)
             is PracticeChoice.Piece -> scores.firstOrNull { it.id == choice.id }
                 ?.let { PracticeSelection(it, choice.targeting, pieceSummary(choice.targeting)) }
                 ?: run {
                     diag.event(TAG, "piece ${choice.id.value} was chosen but is not loaded; generating instead")
-                    generated(seed, monoSafe(SpacedPracticeScheduler.DefaultBase, input), choice.targeting)
+                    container.exerciseGenerator.generated(
+                        seed,
+                        monoSafe(SpacedPracticeScheduler.DefaultBase, input),
+                        choice.targeting,
+                    )
                 }
         }
     }
 
     override suspend fun chooseDrill(target: SkillTag, input: Polyphony, seed: Long): PracticeSelection {
-        val base = SpacedPracticeScheduler.DefaultBase
-        val hearable = target.takeUnless { input == Polyphony.Mono && it == SkillTag.HandIndependence }
+        val states = withContext(Dispatchers.IO) { container.skillStore?.states().orEmpty() }
+        val base = container.curriculum.currentStage(states).spec
+        val hearable = target.takeIf { it.isHearableBy(input) }
         if (hearable == null) {
             diag.event(TAG, "drill target $target dropped: a $input input cannot hear both hands (spec I3)")
         }
         val spec = monoSafe(hearable?.let { container.exerciseGenerator.specTargeting(it, base) } ?: base, input)
-        return generated(seed, spec, setOfNotNull(hearable))
+        return container.exerciseGenerator.generated(seed, spec, setOfNotNull(hearable))
     }
 
     override suspend fun open(piece: CorpusPiece): PracticeSelection? {
@@ -102,6 +121,7 @@ public class AppPracticeWiring(private val container: AppContainer) : PracticeWi
         store.save(session, judgements)
     }
 
+    /** Dating the path is part of folding, so a stage cannot be passed without the day being recorded. */
     override suspend fun recordSkills(outcomes: List<SkillOutcome>) {
         val store = withContext(Dispatchers.IO) { container.skillStore }
         if (store == null) {
@@ -109,31 +129,37 @@ public class AppPracticeWiring(private val container: AppContainer) : PracticeWi
             return
         }
         store.record(outcomes, nowEpochMillis())
+        container.journeyWiring.markStanding()
     }
-
-    private fun generated(seed: Long, spec: DifficultySpec, targeting: Set<SkillTag>): PracticeSelection =
-        PracticeSelection(container.exerciseGenerator.generate(seed, spec), targeting, drillSummary(targeting))
 
     private suspend fun corpus(): List<Score> = corpusLock.withLock {
-        parsedCorpus ?: withContext(Dispatchers.Default) { parseCorpus() }.also { parsedCorpus = it }
+        parsedCorpus
+            ?: withContext(Dispatchers.Default) { parseCorpus(container.musicXmlParser, diag) }
+                .also { parsedCorpus = it }
     }
+}
 
-    private fun parseCorpus(): List<Score> = Corpus.pieces.mapNotNull { piece ->
-        when (val parsed = Corpus.parse(piece, container.musicXmlParser)) {
-            is MusicXmlResult.Parsed -> {
-                if (parsed.dropped.isNotEmpty()) {
-                    diag.event(
-                        TAG,
-                        "'${piece.title}' parsed with ${parsed.dropped.size} dropped: " +
-                            parsed.dropped.joinToString("; ") { it.toString() },
-                    )
-                }
-                parsed.score
+private fun ExerciseGenerator.generated(
+    seed: Long,
+    spec: DifficultySpec,
+    targeting: Set<SkillTag>,
+): PracticeSelection = PracticeSelection(generate(seed, spec), targeting, drillSummary(targeting))
+
+private fun parseCorpus(parser: MusicXmlParser, diag: Diag): List<Score> = Corpus.pieces.mapNotNull { piece ->
+    when (val parsed = Corpus.parse(piece, parser)) {
+        is MusicXmlResult.Parsed -> {
+            if (parsed.dropped.isNotEmpty()) {
+                diag.event(
+                    TAG,
+                    "'${piece.title}' parsed with ${parsed.dropped.size} dropped: " +
+                        parsed.dropped.joinToString("; ") { it.toString() },
+                )
             }
-            is MusicXmlResult.Failed -> {
-                diag.event(TAG, "'${piece.title}' failed to parse: ${parsed.reason}")
-                null
-            }
+            parsed.score
+        }
+        is MusicXmlResult.Failed -> {
+            diag.event(TAG, "'${piece.title}' failed to parse: ${parsed.reason}")
+            null
         }
     }
 }

@@ -22,6 +22,7 @@ import com.dewijones92.primavista.practice.NoteJudgement
 import com.dewijones92.primavista.practice.PerformanceJudge
 import com.dewijones92.primavista.practice.RefusalReason
 import com.dewijones92.primavista.practice.SessionResult
+import com.dewijones92.primavista.practice.Stage
 import com.dewijones92.primavista.practice.TickTiming
 import com.dewijones92.primavista.practice.TransportState
 import com.dewijones92.primavista.practice.Verdict
@@ -51,6 +52,9 @@ public enum class PracticeIntent { Next, DrillWeakest, Again }
 
 public enum class PracticeToggle { Metronome, Echo }
 
+/** Which rung of [com.dewijones92.primavista.practice.Curriculum] Dewi is on. Null when unknown. */
+public typealias StageSource = suspend () -> Stage?
+
 public data class PracticeUiState(
     val score: Score? = null,
     val system: StaffSystem? = null,
@@ -58,11 +62,17 @@ public data class PracticeUiState(
     val position: Ticks = Ticks.ZERO,
     val playheadX: StaffSpaces = StaffSpaces.ZERO,
     val countInBeatsRemaining: Int = 0,
+    /** How many beats this count-in started with, so the screen can show the ones already spent. */
+    val countInBeats: Int = 0,
     val verdicts: Map<Int, Verdict> = emptyMap(),
     /** Notes played that answered to nothing written. Counted, because they have no notehead to colour. */
     val extras: Int = 0,
     val refusal: RefusalReason? = null,
     val result: SessionResult? = null,
+    /** The run behind the results sheet, kept after it is dismissed. See `.claude/CODE-NOTES.md`. */
+    val lastRun: SessionResult? = null,
+    /** Where this session sits on the path. Null means it could not be read, never "stage one". */
+    val stage: Stage? = null,
     val inputLabel: String = "",
     val tempoBpm: Int = 0,
     val input: InputMode = InputMode.Tap,
@@ -87,7 +97,10 @@ public data class PracticeUiState(
  * same mistake as deriving timing from recomposition, and why backgrounding pauses rather than
  * freezes.
  */
-public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel() {
+public class PracticeViewModel(
+    private val wiring: PracticeWiring,
+    private val stages: StageSource = { null },
+) : ViewModel() {
 
     private val diag: Diag = wiring.diag
     private val _state = MutableStateFlow(PracticeUiState())
@@ -102,6 +115,7 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
     private var record: SessionRecord? = null
     private var handledRequest = 0
     private var opened = false
+    private var runOpenedAtNanos = Long.MIN_VALUE
     private val playback = ScorePlayback(wiring.tonePlayer)
 
     public val glyphMetrics: GlyphMetrics get() = wiring.metrics
@@ -248,6 +262,7 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
             verdicts = emptyMap(),
             extras = 0,
             result = null,
+            lastRun = null,
             notice = null,
         )
     }
@@ -262,6 +277,7 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
             TransportState.Running, TransportState.CountingIn -> return
             TransportState.Paused -> {
                 conductor.resume()
+                runOpenedAtNanos = conductor.nanosFor(conductor.position())
                 val retimed = judgeState?.let { judge.retime(it, conductor.timingSnapshot()) }
                 diag.event(
                     TAG,
@@ -274,6 +290,7 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
             }
             TransportState.Idle, TransportState.Finished -> {
                 conductor.start()
+                runOpenedAtNanos = conductor.nanosFor(conductor.position())
                 judgeState = judge.begin(score, conductor.timingSnapshot())
                 record = SessionRecord(wiring, score, source, conductor.tempoBpm)
                 diag.event(
@@ -291,6 +308,10 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
                             diag.counted("input", "notesWhileNotJudging")
                             return@collect
                         }
+                        if (note.atNanos < runOpenedAtNanos) {
+                            diag.counted("input", "notesPlayedBeforeThisRunBegan")
+                            return@collect
+                        }
                         val (next, settled) = judge.advance(current, note)
                         judgeState = next
                         if (settled.isNotEmpty()) applyJudgements(settled)
@@ -300,7 +321,13 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
             }
         }
         armMetronome(wiring.metronome, score, conductor, _state.value.metronomeOn)
-        _state.value = _state.value.copy(transport = conductor.state, previewing = false, result = null)
+        _state.value = _state.value.copy(
+            transport = conductor.state,
+            previewing = false,
+            result = null,
+            lastRun = null,
+            countInBeats = maxOf(_state.value.countInBeats, conductor.countInBeatsRemaining()),
+        )
     }
 
     /**
@@ -374,10 +401,12 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
      * each stored preference means and why [mayListenFirst] is not simply the stored flag.
      */
     private suspend fun load(selection: PracticeSelection, input: InputMode, mayListenFirst: Boolean) {
+        if (conductor?.isRunning == true) pause()
         collection?.cancel()
         wiring.metronome.stop()
         conductor?.stop()
         val score = selection.score
+        val stage = stages.read(diag)
         val stored = wiring.preferences.settings()
         val source = wiring.sourceFor(input)
         val judge = wiring.judgeFor(score)
@@ -401,6 +430,7 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
                 tempoBpm = sessionTempoBpm(score.defaultTempoBpm, stored.tempoBpm),
                 targeting = selection.targeting, choiceSummary = selection.summary,
                 transport = TransportState.Idle, previewing = false,
+                stage = stage, lastRun = null, countInBeats = 0,
             )
             return
         }
@@ -435,11 +465,12 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
 
         _state.value = _state.value.copy(
             score = score, system = system, transport = conductor.state, position = Ticks.ZERO,
-            playheadX = StaffSpaces.ZERO, countInBeatsRemaining = 0, verdicts = emptyMap(), extras = 0,
-            refusal = null, result = null, inputLabel = source.label, input = input,
+            playheadX = StaffSpaces.ZERO, countInBeatsRemaining = 0, countInBeats = 0,
+            verdicts = emptyMap(), extras = 0,
+            refusal = null, result = null, lastRun = null, inputLabel = source.label, input = input,
             tempoBpm = conductor.tempoBpm, metronomeOn = metronomeOn, echoOn = !micMutes,
             targeting = selection.targeting, choiceSummary = selection.summary,
-            previewing = false, loading = false,
+            stage = stage, previewing = false, loading = false,
         )
 
         when {
@@ -478,6 +509,7 @@ public class PracticeViewModel(private val wiring: PracticeWiring) : ViewModel()
         _state.value = _state.value.copy(
             transport = TransportState.Finished,
             result = result,
+            lastRun = result,
             notice = null,
         )
     }
@@ -535,6 +567,23 @@ private suspend fun PracticeWiring.selectionFor(
     PracticeIntent.DrillWeakest -> finished?.let { drillTarget(it, input.polyphony) }
         ?.let { chooseDrill(it.tag, input.polyphony, seed) }
         ?: chooseNext(input.polyphony, seed)
+}
+
+/**
+ * Where Dewi stands on the path — the same rung the wiring narrowed its choice to, read again for
+ * the header. A failed read leaves it unknown rather than quietly reading as stage one.
+ */
+private suspend fun StageSource.read(diag: Diag): Stage? {
+    val stage = runCatching { this() }.getOrElse {
+        diag.event(TAG, "the stage could not be read: ${it::class.simpleName} ${it.message}")
+        null
+    }
+    diag.event(
+        TAG,
+        "stage=${stage?.id?.number ?: "unknown"} '${stage?.title ?: "-"}' " +
+            "stageSkills=${stage?.skills?.size ?: 0} (shown in the header)",
+    )
+    return stage
 }
 
 /**

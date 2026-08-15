@@ -15,6 +15,7 @@ private const val NOTES_PER_TUPLET = 3
  */
 internal class RhythmChoice(val duration: Duration, val repeats: Int, val weight: Int) {
     val totalTicks: Long get() = duration.ticks.value * repeats
+    val figure: SkillTag.RhythmFigure get() = duration.figure
 }
 
 internal fun rhythmChoices(spec: DifficultySpec): List<RhythmChoice> {
@@ -28,9 +29,11 @@ internal fun rhythmChoices(spec: DifficultySpec): List<RhythmChoice> {
         }
     }
     if (!spec.allowTuplets) return plain
-    val tuplets = symbols.mapNotNull { symbol ->
-        writtenValue(symbol, 0, NOTES_PER_TUPLET, TUPLET_IN_THE_TIME_OF)?.let {
-            RhythmChoice(it, NOTES_PER_TUPLET, TUPLET_WEIGHT)
+    val tuplets = symbols.flatMap { symbol ->
+        (0..dotLimit).mapNotNull { dots ->
+            writtenValue(symbol, dots, NOTES_PER_TUPLET, TUPLET_IN_THE_TIME_OF)?.let {
+                RhythmChoice(it, NOTES_PER_TUPLET, TUPLET_WEIGHT)
+            }
         }
     }
     return plain + tuplets
@@ -59,6 +62,13 @@ internal class BarFill(measureTicks: Long, private val choices: List<RhythmChoic
     }
 
     val isPossible: Boolean get() = choices.isNotEmpty() && unit > 0 && reachable[slots]
+
+    /** Whether a bar exists that *contains* [choice] — see `.claude/CODE-NOTES.md`. */
+    fun canPlace(choice: RhythmChoice): Boolean {
+        if (!isPossible || choice.totalTicks % unit != 0L) return false
+        val step = (choice.totalTicks / unit).toInt()
+        return step in 1..slots && reachable[slots - step]
+    }
 
     fun fillRandomly(random: Random): List<Duration> = fill { weightedPick(it, random) }
 

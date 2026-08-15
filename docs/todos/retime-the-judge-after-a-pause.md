@@ -4,7 +4,7 @@ kind: todo
 status: done
 priority: high
 area: practice
-updated: 2026-08-08
+updated: 2026-08-15
 ---
 
 # Re-time the judge after a pause
@@ -13,8 +13,9 @@ updated: 2026-08-08
 `PracticeViewModel.resume()` calls it (`PracticeViewModel.kt:235`), logging `judge retimed` with the
 position.
 
-An adversarial review then found the fix incomplete in one direction — see *The gap the first fix
-left* below. Treat that as the live part of this item.
+An adversarial review then found the fix incomplete in one direction; that gap was closed on
+2026-08-15. The whole item is done — see *The gap the first fix left* below for what was missing and
+what now holds it.
 
 ## The problem
 
@@ -64,7 +65,7 @@ leg.
 - `TempoConductorTest` — *"a perfect performance across a pause re-judges identically from its own
   snapshot"* still passes, so liveness was not traded for reproducibility.
 
-## The gap the first fix left
+## The gap the first fix left — closed 2026-08-15
 
 `retime` re-times only the notes whose onset is strictly **after** the pause position. So a note that
 was already overdue but **still inside its matching window** when the phone rang keeps its pre-pause
@@ -73,10 +74,16 @@ wall time: on resume it is `Missed` on the very first tick, and the note Dewi th
 picking the piece back up.
 
 That is verbatim the failure this whole item exists to remove, and it is worse than the original in
-one respect: it debits the skill for a note he got **right**. It was left rather than patched because
-it needs a decision about crediting pause duration to expectations that are unsettled at the moment
-of the pause, and the principle to decide by is the one the spec turns on — the app must not blame
-Dewi for its own bookkeeping. A note he had not yet missed when he paused has not been missed.
+one respect: it debits the skill for a note he got **right**. It was left rather than patched because it needed a decision about crediting pause duration to
+expectations that are unsettled at the moment of the pause. The principle decided it: the app must
+not blame Dewi for its own bookkeeping, and **a note he had not yet missed when he paused has not
+been missed**. It is now held by `TempoConductorTest` — *"a note overdue but still inside its window
+when the phone rings is not missed"* — alongside *"a perfect performance played live across two
+pauses is all correct"* and *"an imperfect performance across a pause is judged the same live and
+from its snapshot"*, which is the spec I2 property that the earlier all-correct fixtures satisfied
+trivially.
 
-`.claude/CODE-NOTES.md` stated the opposite assumption in writing ("a note not yet played is about to
-be judged live anyway"); that entry is wrong and is being corrected with the fix.
+`.claude/CODE-NOTES.md` had stated the opposite assumption in writing — "a note not yet played is
+about to be judged live anyway" — which is precisely the false premise that shipped the gap. It was
+corrected alongside the fix, and is worth remembering as a case where a note explaining a decision
+was itself the thing that made the decision look sound.

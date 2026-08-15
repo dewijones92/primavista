@@ -4,6 +4,7 @@ import kotlin.math.abs
 import kotlin.random.Random
 
 private const val STEP_WEIGHT = 8
+private const val REPEAT_WEIGHT = 2
 private const val LEAP_WEIGHT = 1
 private const val ACCIDENTAL_PERCENT = 22
 private const val PERCENT = 100
@@ -60,7 +61,7 @@ internal class MelodyWalker(
 
     private fun nextIndex(): Int {
         val reachable = ladder.indices.filter {
-            it != index && abs(StaffGeometry.soundingNumber(ladder[it]) - lastSounding) <= maxLeapSemitones
+            abs(StaffGeometry.soundingNumber(ladder[it]) - lastSounding) <= maxLeapSemitones
         }
         if (reachable.isEmpty()) return index
         var ticket = random.nextInt(reachable.sumOf { weightOf(it) })
@@ -71,7 +72,11 @@ internal class MelodyWalker(
         return reachable.last()
     }
 
-    private fun weightOf(candidate: Int): Int = if (abs(candidate - index) == 1) STEP_WEIGHT else LEAP_WEIGHT
+    private fun weightOf(candidate: Int): Int = when (abs(candidate - index)) {
+        0 -> REPEAT_WEIGHT
+        1 -> STEP_WEIGHT
+        else -> LEAP_WEIGHT
+    }
 
     private fun withOptionalAccidental(base: Pitch): Pitch {
         if (extras.isEmpty() || random.nextInt(PERCENT) >= ACCIDENTAL_PERCENT) return base

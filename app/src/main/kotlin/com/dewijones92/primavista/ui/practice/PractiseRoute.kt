@@ -3,35 +3,16 @@ package com.dewijones92.primavista.ui.practice
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Hearing
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Mic
-import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,10 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.Lifecycle
@@ -53,9 +33,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dewijones92.primavista.di.AppContainer
 import com.dewijones92.primavista.di.InputMode
 import com.dewijones92.primavista.practice.SessionResult
+import com.dewijones92.primavista.score.Midi
 import com.dewijones92.primavista.score.Polyphony
+import com.dewijones92.primavista.ui.mascot.MascotMood
+import com.dewijones92.primavista.ui.mascot.Trill
 import com.dewijones92.primavista.ui.repertoire.PracticeRequest
 import com.dewijones92.primavista.ui.results.ResultsSheet
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Runs the session, and owns the two decisions above it: **what** to read, and **what is listening**.
@@ -69,7 +54,8 @@ import com.dewijones92.primavista.ui.results.ResultsSheet
  */
 @Composable
 public fun PractiseRoute(container: AppContainer, modifier: Modifier = Modifier) {
-    val viewModel: PracticeViewModel = viewModel { PracticeViewModel(container.practiceWiring) }
+    val stages = remember(container) { appStageSource(container) }
+    val viewModel: PracticeViewModel = viewModel { PracticeViewModel(container.practiceWiring, stages) }
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -96,45 +82,27 @@ public fun PractiseRoute(container: AppContainer, modifier: Modifier = Modifier)
         }
     }
 
-    Column(modifier.fillMaxSize()) {
-        SessionControls(
-            state = state,
-            onInput = { mode ->
-                if (mode == InputMode.Mic && !container.microphoneGranted()) {
-                    container.diag.event("input", "PLAY IT selected without RECORD_AUDIO; asking for it")
-                    micPermission.launch(Manifest.permission.RECORD_AUDIO)
-                } else {
-                    viewModel.selectInput(mode)
-                }
-            },
-            onListen = viewModel::listen,
-            onNext = { viewModel.choose(PracticeIntent.Next) },
-        )
-        val showingStaff = !state.loading && (state.score != null || state.refusal != null)
-        if (!showingStaff) Notice(state.notice, viewModel::dismiss)
+    val setup = remember(viewModel, micPermission, container) {
+        sessionSetup(viewModel, container) { micPermission.launch(Manifest.permission.RECORD_AUDIO) }
+    }
 
+    Column(modifier.fillMaxSize()) {
+        val showingStaff = !state.loading && (state.score != null || state.refusal != null)
         Box(Modifier.fillMaxWidth().weight(1f)) {
-            when {
-                !showingStaff -> Waiting()
-                else -> PracticeScreen(
+            if (showingStaff) {
+                PracticeScreen(
                     state = state,
                     metrics = container.glyphMetrics,
                     onStart = viewModel::play,
                     onPause = viewModel::pause,
                     onResume = viewModel::play,
-                    onKeyPressed = { midi, nanos ->
-                        // dewidebug: the boundary between the keyboard and the input seam. A report
-                        // showing every note Missed with no `input/notes-tap` count cannot say whether
-                        // the touch never arrived or the flow never delivered it.
-                        container.diag.event(
-                            "input",
-                            "dewidebug tap key=${midi.number} at=${nanos}ns now=${System.nanoTime()}ns",
-                        )
-                        container.tapSource.onKeyPressed(midi, nanos)
-                    },
+                    onKeyPressed = { midi, nanos -> tapped(container, midi, nanos) },
                     onFrame = viewModel::tick,
                     onToggle = viewModel::toggle,
+                    setup = setup,
                 )
+            } else {
+                Waiting(state.notice, viewModel::dismiss)
             }
         }
 
@@ -148,6 +116,42 @@ public fun PractiseRoute(container: AppContainer, modifier: Modifier = Modifier)
             )
         }
     }
+}
+
+/** Asking for the microphone is the activity's job, so the launcher arrives as [askForMicrophone]. */
+private fun sessionSetup(
+    viewModel: PracticeViewModel,
+    container: AppContainer,
+    askForMicrophone: () -> Unit,
+) = SessionSetup(
+    onInput = { mode ->
+        if (mode == InputMode.Mic && !container.microphoneGranted()) {
+            container.diag.event("input", "PLAY IT selected without RECORD_AUDIO; asking for it")
+            askForMicrophone()
+        } else {
+            viewModel.selectInput(mode)
+        }
+    },
+    onListen = viewModel::listen,
+    onNext = { viewModel.choose(PracticeIntent.Next) },
+    onDismissNotice = viewModel::dismiss,
+)
+
+/**
+ * The tap boundary keeps its own log line: a report showing every note `Missed` with no
+ * `input/notes-tap` count cannot otherwise say whether the touch arrived.
+ */
+private fun tapped(container: AppContainer, midi: Midi, nanos: Long) {
+    container.diag.event(
+        "input",
+        "dewidebug tap key=${midi.number} at=${nanos}ns now=${System.nanoTime()}ns",
+    )
+    container.tapSource.onKeyPressed(midi, nanos)
+}
+
+/** One answer to "where does he stand", and it is the container's — see `.claude/CODE-NOTES.md`. */
+private fun appStageSource(container: AppContainer): StageSource = {
+    withContext(Dispatchers.IO) { container.standingStage() }
 }
 
 /** [input] is what was listening, so the sheet cannot offer a drill this session would refuse. */
@@ -178,117 +182,32 @@ private fun ResultsDialog(
     }
 }
 
-/**
- * Input, sound and what to read next — the three things a session needs that the staff itself cannot
- * offer. It sits above the screen rather than floating over it so it can never cover the notation.
- */
 @Composable
-private fun SessionControls(
-    state: PracticeUiState,
-    onInput: (InputMode) -> Unit,
-    onListen: () -> Unit,
-    onNext: () -> Unit,
-) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            InputModeChip(InputMode.Tap, "TAP", Icons.Rounded.TouchApp, state.input, onInput)
-            InputModeChip(InputMode.Mic, "MIC", Icons.Rounded.Mic, state.input, onInput)
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = onListen, modifier = Modifier.testTag("listen")) {
-                Icon(Icons.Rounded.Hearing, contentDescription = "Hear it first")
-            }
-            IconButton(onClick = onNext, modifier = Modifier.testTag("next")) {
-                Icon(Icons.Rounded.AutoAwesome, contentDescription = "Something else to read")
-            }
-        }
-    }
-}
-
-@Composable
-private fun InputModeChip(
-    mode: InputMode,
-    label: String,
-    icon: ImageVector,
-    current: InputMode,
-    onInput: (InputMode) -> Unit,
-) {
-    FilterChip(
-        selected = mode == current,
-        onClick = { onInput(mode) },
-        label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(CHIP_ICON)) },
-        shape = RoundedCornerShape(CHIP_CORNER),
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        ),
-        modifier = Modifier.testTag("input-${mode.name}"),
-    )
-}
-
-/** Everything the session decides on Dewi's behalf says so here, in the words it would use to him. */
-@Composable
-private fun Notice(notice: String?, onDismiss: () -> Unit) {
-    AnimatedVisibility(
-        visible = notice != null,
-        enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically(),
+private fun Waiting(notice: String?, onDismiss: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Surface(
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            shape = RoundedCornerShape(NOTICE_CORNER),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 2.dp)
-                .clickable(onClick = onDismiss)
-                .testTag("notice"),
-        ) {
-            Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Rounded.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.size(NOTICE_ICON),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = notice.orEmpty(),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun Waiting() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = SPINNER_STROKE,
-                modifier = Modifier.size(SPINNER_SIZE),
-            )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = "Choosing something to read…",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Trill(MascotMood.Curious, Modifier.size(SPINNER_BIRD))
+        Spacer(Modifier.height(14.dp))
+        CircularProgressIndicator(
+            color = MaterialTheme.colorScheme.primary,
+            strokeWidth = SPINNER_STROKE,
+            modifier = Modifier.size(SPINNER_SIZE),
+        )
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = "Finding you something to read…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SessionNotice(notice, onDismiss)
     }
 }
 
 private val RESULT_CORNER = 24.dp
 private val RESULT_ELEVATION = 4.dp
-private val CHIP_CORNER = 50.dp
-private val CHIP_ICON = 16.dp
-private val NOTICE_CORNER = 12.dp
-private val NOTICE_ICON = 16.dp
-private val SPINNER_SIZE = 34.dp
+private val SPINNER_SIZE = 30.dp
 private val SPINNER_STROKE = 3.dp
+private val SPINNER_BIRD = 108.dp

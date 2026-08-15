@@ -1,6 +1,7 @@
 package com.dewijones92.primavista.ui.results
 
 import com.dewijones92.primavista.practice.SessionResult
+import com.dewijones92.primavista.ui.mascot.MascotMood
 import com.dewijones92.primavista.ui.progress.percent
 
 /**
@@ -27,6 +28,19 @@ internal fun toneOf(result: SessionResult): ResultTone = when {
     result.cleanliness >= GOOD_AT -> ResultTone.Good
     result.cleanliness >= MIXED_AT -> ResultTone.Mixed
     else -> ResultTone.Rough
+}
+
+/**
+ * Trill's face for a finished session. Derived *from* [ResultTone] rather than from the numbers a
+ * second time, so she cannot disagree with the headline beside her — and only the two tones that
+ * describe a good run reach a pleased face. See `.claude/CODE-NOTES.md`.
+ */
+internal fun moodFor(tone: ResultTone): MascotMood = when (tone) {
+    ResultTone.Nothing -> MascotMood.Curious
+    ResultTone.Rough -> MascotMood.Wincing
+    ResultTone.Mixed -> MascotMood.Idle
+    ResultTone.Good -> MascotMood.Delighted
+    ResultTone.Excellent -> MascotMood.Impressed
 }
 
 /** The arithmetic the headline percentage came from, spelled out. See `.claude/CODE-NOTES.md`. */

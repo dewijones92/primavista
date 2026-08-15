@@ -1,7 +1,7 @@
 ---
 title: Backlog
 kind: index
-updated: 2026-08-08
+updated: 2026-08-15
 ---
 
 # Backlog
@@ -18,10 +18,9 @@ never silently abandoned.
 | [midi-input](midi-input.md) | medium | input | The third `AnswerSource` adapter: exact, zero-ambiguity, and the only honest route to judging polyphony |
 | [diagnostics-report](diagnostics-report.md) | high | ui | Spec I7 is currently proven by nothing; a report has to be able to reconstruct a session's verdicts |
 
-| [retime-the-judge-after-a-pause](retime-the-judge-after-a-pause.md) | high | practice | Both halves landed, then a review found the fix re-times only notes starting *after* the pause — so a note overdue but still in its window is Missed and the note Dewi then plays is an Extra, debiting a skill for a note he got right |
 
 ## Done
 
 | Item | Area | Outcome |
 |---|---|---|
-| — | — | *nothing closed outright yet* |
+| [retime-the-judge-after-a-pause](retime-the-judge-after-a-pause.md) | practice | A pause no longer makes the notes after it read late, and a note that was overdue-but-not-yet-missed when the phone rang is not marked Missed. Held by three tests, including one on an *imperfect* performance — the earlier all-correct fixtures agreed trivially |

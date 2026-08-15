@@ -46,7 +46,7 @@ public class SeededExerciseGenerator(private val diag: Diag = NoOpDiag) : Exerci
         val targeted = when (target) {
             is SkillTag.ClefRegion -> base.withClefRegion(target.clef, target.band)
             is SkillTag.LegerLines -> base.withLegerLines(target.clef, target.count, target.above)
-            is SkillTag.Accidental -> base.copy(allowedAlterations = base.allowedAlterations + target.alter)
+            is SkillTag.Accidental -> base.withAccidental(target.alter)
             is SkillTag.KeyReading -> base.copy(key = KeySignature(target.fifths))
             is SkillTag.RhythmFigure -> base.withRhythmFigure(target)
             is SkillTag.Leap -> base.withLeap(target.semitones)
@@ -114,7 +114,9 @@ public class SeededExerciseGenerator(private val diag: Diag = NoOpDiag) : Exerci
         }
 
     private fun extraAlterations(spec: DifficultySpec): List<Alter> =
-        spec.allowedAlterations.filter { it != Alter.Natural }.sortedBy { it.semitones }
+        spec.allowedAlterations
+            .filter { it != Alter.Natural || spec.key.fifths != 0 }
+            .sortedBy { it.semitones }
 
     private fun identifierOf(seed: Long, spec: DifficultySpec): String =
         "generated-$seed-${spec.bars}bars-${spec.time.beats}-${spec.time.beatUnit}-key${spec.key.fifths}"
