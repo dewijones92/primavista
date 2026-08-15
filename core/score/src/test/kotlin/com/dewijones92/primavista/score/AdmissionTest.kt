@@ -8,7 +8,6 @@ import org.junit.Test
 private const val SEEDS = 40L
 private const val TWO_SHARPS = 2
 private const val THREE_FLATS = -3
-private const val OCTAVE_SEMITONES = 12
 private const val THIRD_SEMITONES = 4
 
 class AdmissionTest {
@@ -25,7 +24,6 @@ class AdmissionTest {
         val specs = mapOf(
             "grand staff" to spec(),
             "one sharp" to spec(key = KeySignature(1)),
-            "stepwise" to spec(maxLeapSemitones = THIRD_SEMITONES),
             "dotted" to spec(maxDots = 1),
             "hands separate" to spec(bothHandsActive = false),
             "three four" to spec(time = TimeSignature(3, 4)),
@@ -42,26 +40,23 @@ class AdmissionTest {
         assertEquals(emptyList<String>(), refused)
     }
 
+    /**
+     * A writing dial, not a reading ceiling. Every pitch in an admitted passage is already one this
+     * level reads, so the jump between two of them asks nothing new of the eye — and read as a gate
+     * it put *Ode to Joy* on the tenth rung. See the note on `admits`.
+     */
     @Test
-    fun `a leap beyond the level is refused, and the refusal says by how much`() {
+    fun `a leap wider than the level would write is not a refusal`() {
         val stepwise = spec(maxLeapSemitones = THIRD_SEMITONES)
         val leaping = scoreOf(Pitch(Letter.C, Alter.Natural, 4), Pitch(Letter.C, Alter.Natural, 5))
-        val verdict = stepwise.admits(leaping) as Admission.Refused
-        assertEquals(
-            listOf("a leap of $OCTAVE_SEMITONES semitones, beyond this level's $THIRD_SEMITONES"),
-            verdict.reasons
-        )
+        assertTrue(stepwise.admits(leaping).isAdmitted)
     }
 
     @Test
-    fun `the gap between the hands is not a leap`() {
-        val wide = spec(maxLeapSemitones = THIRD_SEMITONES)
-        val handsApart = scoreOf(
-            Pitch(Letter.C, Alter.Natural, 5),
-            Pitch(Letter.C, Alter.Natural, 3),
-            lowerStaffForSecond = true,
-        )
-        assertTrue(wide.admits(handsApart).isAdmitted)
+    fun `a leap out of the level's range is still refused, because the note itself is`() {
+        val stepwise = spec(maxLeapSemitones = THIRD_SEMITONES)
+        val offTheEnd = scoreOf(Pitch(Letter.C, Alter.Natural, 4), Pitch(Letter.C, Alter.Natural, 7))
+        assertFalse(stepwise.admits(offTheEnd).isAdmitted)
     }
 
     /** In G major an F sharp is the key signature doing its job, not something extra to read. */
@@ -92,15 +87,11 @@ class AdmissionTest {
 
     @Test
     fun `a refusal names every dial the music exceeded, not just the first`() {
-        val narrow = spec(
-            symbols = setOf(NoteSymbol.Quarter),
-            maxLeapSemitones = 1,
-            allowedAlterations = setOf(Alter.Natural),
-        )
+        val narrow = spec(symbols = setOf(NoteSymbol.Quarter), allowedAlterations = setOf(Alter.Natural))
         val verdict = narrow.admits(
             scoreOf(Pitch(Letter.C, Alter.Natural, 4), Pitch(Letter.F, Alter.Sharp, 4), symbol = NoteSymbol.Whole),
         ) as Admission.Refused
-        assertEquals(3, verdict.reasons.size)
+        assertEquals(listOf("Whole notes", "an accidental of 1 semitones"), verdict.reasons)
     }
 
     @Test

@@ -2725,3 +2725,44 @@ Agents implementing a module append their own `##` section and never rewrite ano
   the 25 selected files are committed here, byte for byte as published, so provenance survives and
   the file the app parses is the file that was screened. Re-run with
   `./gradlew :tools:repertoire:run --args="report --corpus <dir> --commit <sha>"`.
+
+## app/src/main/kotlin/com/dewijones92/primavista/di/ShippedRepertoire.kt
+
+- **What the Repertoire tab's blank wait actually was, measured rather than guessed.** The GC log
+  is the instrument: `adb logcat | grep "GC freed"` on the app process, first and last timestamp.
+
+  | | span of back-to-back GC | collections |
+  |---|---|---|
+  | sequential parse, whole event list filtered per window | **24s** | 65 |
+  | after `covers` short-circuits and `Passages` binary-searches | ~20s | — |
+  | parallel `async` per piece | **12s** | 27 |
+
+  Each collection freed 30–50MB in a 26MB heap, so it is allocation-bound and the **DOM** is where
+  it goes — not the windowing, which is 59ms warm on the JVM. Three things follow. Parallelism
+  helps but does not fix it. The remaining cost is inherent to parsing 500KB of compressed MusicXML,
+  so the real fix is to not do it at startup (`docs/todos/repertoire-load-cost.md`). And the emulator
+  is a memory-capped software VM, so **do not decide the fix from these numbers** — measure the
+  phone first, exactly as the Trill frame-time note above says.
+
+- **Streaming the rows is a separate win from making it faster, and worth having either way.** A
+  screen that shows twenty-eight skeletons for ten seconds and then everything at once reads as
+  broken; one that fills reads as busy. `parsed` is a `StateFlow` each piece appends itself to, and
+  `PieceParse` carries its own `passages` so a row is *finished* when its coroutine ends rather than
+  when the whole corpus has been read.
+
+- **Two caches doing the same work is a DRY bug that only shows up as latency.** For one commit the
+  Repertoire tab (`ParsedCorpus`) and the scheduler (`AppPracticeWiring`) each parsed and windowed
+  the corpus independently. Both were correct; together they did everything twice. Unifying them
+  made the tab *slower* in wall-clock — one consumer now waits on the other's computation instead of
+  racing it — which is the right trade and worth knowing before reading it as a regression.
+
+## core/notation — a false alarm worth not repeating
+
+- **The long verticals below the bass staff are stems, not overshooting barlines.** Eyeballing a
+  device screenshot said the grand-staff barlines ran past the bottom staff line. Measuring the
+  pixel columns said otherwise: staff lines at y=804/837/870/903/936 (treble) and
+  1200/1233/1266/1299/1332 (bass), barlines at x=520/741/962 spanning **804..1335** — exactly top of
+  the upper staff to bottom of the lower, which is what `emitBarlines` says. The lines 10px to their
+  right, ending at 1388, are 3.5-staff-space down-stems on low bass notes, which is correct
+  engraving. The `StaffPngRenderer` output of the same piece confirms it at a glance. Measure the
+  image; do not read it.

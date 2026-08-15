@@ -1,10 +1,10 @@
 ---
 title: Expand the repertoire beyond the starter corpus
 kind: todo
-status: planned
+status: done
 priority: high
 area: score
-updated: 2026-08-07
+updated: 2026-08-15
 ---
 
 # Expand the repertoire beyond the starter corpus
@@ -56,3 +56,23 @@ prove the pipeline, not enough to practise against.
 - Every bundled piece records its source and licence in the repo.
 - An import-time check that each bundled file round-trips through the parser with nothing
   dropped.
+
+## What actually happened (2026-08-15)
+
+Delivered, with two departures from the plan above, both forced by measurement:
+
+- **"Nothing dropped" became "nothing *material* dropped."** The original done-condition —
+  every bundled file round-trips with nothing dropped — would have rejected 59% of the
+  corpus over slurs and dynamics. The app draws from the parsed score, so a dropped slur
+  leaves the page and the expectation agreeing; only a hole in the music matters. `DropKind`
+  draws that line, and the shipped pieces do satisfy the stricter reading of it: **no shipped
+  piece drops anything material**, asserted by `CorpusTest`.
+- **Automatic grading needed a new predicate.** Point 1 assumed a piece's `SkillTag`s would
+  place it. They cannot: a stage's declared skills are a teaching claim, not an enumeration,
+  so no stage lists `Leap(5)` and the subset test rejects all real music (8,744 of 8,798
+  passages). `DifficultySpec.admits` grades against the dials instead.
+
+Point 3 — opening a score through the system file picker — was **not** done and is now
+[open-any-score](open-any-score.md).
+
+See [`../features/repertoire.md`](../features/repertoire.md).

@@ -33,15 +33,15 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 
 | Module | JVM tests | Instrumented | Holds |
 |---|---|---|---|
-| `:core:score` | 104 | — | the model, the MusicXML subset, the generator's determinism, and `Score.polyphony` (spec I3's predicate) |
+| `:core:score` | 137 | — | the model, the MusicXML subset, the generator's determinism, `Score.polyphony` (spec I3's predicate), part selection, passages, and whether a spec admits a piece |
 | `:core:audio` | 88 | 22 | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM; the AudioTrack and AudioRecord bridges on a device |
 | `:core:notation` | 79 | — | staff geometry for both clefs, stems from font anchors, beams, leger lines, `xOf` agreeing with note placement (spec I1) |
-| `:core:practice` | 105 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum and the placement read (spec I1, I2, I3, I5) |
+| `:core:practice` | 115 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5) and what a piece offers to read |
 | `:lib:pitch` | 60 | — | YIN against synthesised tones, onset separation of repeated notes, vibrato held as one note |
-| `:core:database` | — | 74 | session and skill round-trips, the real v1→v2 migration, cascade delete (spec I4) |
+| `:core:database` | 65 | 74 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 migration and cascade delete on a device (spec I4) |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
 | `:app` | 85 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, and screen logic that does not need a device |
-| **Total** | **533** | **96** | |
+| **Total** | **641** | **96** | |
 
 ## Deliberately uncovered (and why)
 
@@ -58,3 +58,22 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
   catches what is on screen and nothing about what happens when nobody is watching.
 - **Spec I7.** The buffer's mechanics are covered; that a report can reconstruct a session's verdicts
   is not. See `../todos/diagnostics-report.md`.
+- **How long the corpus takes to read on a real phone.** Measured on the emulator through the GC log
+  (see `../todos/repertoire-load-cost.md`); no test can measure the phone, and the emulator is a poor
+  proxy for it.
+
+## Two properties worth knowing about
+
+Both live in `:core:score` and both earn their keep by tying two things together that could
+otherwise drift apart:
+
+- **Every exercise a spec generates is admitted by that spec.** The generator writes inside a
+  spec's dials and `DifficultySpec.admits` checks music against them, so a disagreement is the
+  `specTargeting` family of defect CLAUDE.md records. It found one immediately: the accidental check
+  was reading the note's alteration rather than asking the key, so every exercise in G major was
+  refused over an F sharp that is the signature doing its job.
+- **A drill aimed at anything the shipped repertoire can teach still fills its bars.** Real music
+  asks for more than a generator should write — a two-octave leap, eight leger lines, a septuplet —
+  and the scheduler will hand `specTargeting` whatever the corpus made weak. A separate test
+  characterises exactly how the corpus exceeds the generator, so a *new* kind of excess fails rather
+  than passing unnoticed.

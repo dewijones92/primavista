@@ -15,26 +15,7 @@ package com.dewijones92.primavista.score
  *
  * @param fromIndex 0-based index into [Score.measures], matching [Measure.index].
  */
-public fun Score.excerpt(fromIndex: Int, bars: Int): Score {
-    require(bars > 0) { "an excerpt of $bars bars is not a passage" }
-    require(fromIndex in measures.indices) {
-        "bar index $fromIndex is outside the ${measures.size} bars of ${id.value}"
-    }
-    val window = measures.subList(fromIndex, minOf(fromIndex + bars, measures.size))
-    val from = window.first().start
-    val until = window.last().let { it.start + it.time.measureTicks }
-    // An event that starts inside the window is kept whole, even if it rings past the last
-    // barline: clipping it would produce a duration nobody could notate.
-    val kept = events.filter { it.onset >= from && it.onset < until }
-    val firstBar = window.first().number
-    val lastBar = window.last().number
-    return copy(
-        id = ScoreId("${id.value}$SEPARATOR$firstBar$RANGE$lastBar"),
-        title = "$title (bars $firstBar$EN_DASH$lastBar)",
-        measures = window.mapIndexed { index, measure -> measure.copy(index = index, start = measure.start - from) },
-        events = kept.map { it.rebased(from, hasTieInto(kept, it)) },
-    )
-}
+public fun Score.excerpt(fromIndex: Int, bars: Int): Score = Passages(this).at(fromIndex, bars)
 
 /**
  * Every window of [bars] bars, stepping by [step]. Overlapping windows are allowed and useful: the
@@ -42,15 +23,60 @@ public fun Score.excerpt(fromIndex: Int, bars: Int): Score {
  */
 public fun Score.passages(bars: Int, step: Int = bars): List<Score> {
     require(step > 0) { "a step of $step never advances" }
+    val cutter = Passages(this)
     return (measures.indices step step)
         .filter { it + bars <= measures.size }
-        .map { excerpt(it, bars) }
+        .map { cutter.at(it, bars) }
+}
+
+/**
+ * Cutting windows out of one score, with the per-score work done once.
+ *
+ * It exists for a measured reason. Cutting each window by filtering the whole event list scans
+ * every event per window, so a 232-bar song at three window sizes rescanned thousands of events a
+ * hundred times over — enough allocation to hold the emulator in back-to-back GC for seven seconds,
+ * freeing 30-50MB every 300ms, which is what a "slow screen" turned out to be. Sorting once and
+ * binary-searching the window makes each cut cost the window rather than the piece.
+ */
+private class Passages(private val score: Score) {
+    /** Stable, so an already-ordered score keeps its secondary order within an onset. */
+    private val ordered: List<ScoreEvent> = score.events.sortedBy { it.onset.value }
+    private val onsets: LongArray = LongArray(ordered.size) { ordered[it].onset.value }
+
+    fun at(fromIndex: Int, bars: Int): Score {
+        require(bars > 0) { "an excerpt of $bars bars is not a passage" }
+        require(fromIndex in score.measures.indices) {
+            "bar index $fromIndex is outside the ${score.measures.size} bars of ${score.id.value}"
+        }
+        val window = score.measures.subList(fromIndex, minOf(fromIndex + bars, score.measures.size))
+        val from = window.first().start
+        val until = window.last().let { it.start + it.time.measureTicks }
+        // An event that starts inside the window is kept whole, even if it rings past the last
+        // barline: clipping it would produce a duration nobody could notate.
+        val kept = ordered.subList(firstAtOrAfter(from.value), firstAtOrAfter(until.value))
+        val firstBar = window.first().number
+        val lastBar = window.last().number
+        return score.copy(
+            id = ScoreId("${score.id.value}$SEPARATOR$firstBar$RANGE$lastBar"),
+            title = "${score.title} (bars $firstBar$EN_DASH$lastBar)",
+            measures = window.mapIndexed { index, bar -> bar.copy(index = index, start = bar.start - from) },
+            events = kept.map { it.rebased(from, hasTieInto(kept, it)) },
+        )
+    }
+
+    private fun firstAtOrAfter(tick: Long): Int {
+        val found = onsets.binarySearch(tick)
+        if (found < 0) return -(found + 1)
+        var index = found
+        while (index > 0 && onsets[index - 1] == tick) index--
+        return index
+    }
 }
 
 /**
  * Whether the note this one is tied from survived the cut. If it did not, the tie has no partner
  * and the note is now attacked — leaving the flag set would hide it from the judge entirely
- * (see [Score.attackedNotes]).
+ * (see [Score.attackedNotes]). The scan is only reached by a note that claims a tie, which is rare.
  */
 private fun hasTieInto(kept: List<ScoreEvent>, event: ScoreEvent): Boolean {
     if (event !is Note || !event.tiedFromPrevious) return false

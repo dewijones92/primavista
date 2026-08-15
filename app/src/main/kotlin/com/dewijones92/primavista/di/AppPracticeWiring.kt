@@ -14,12 +14,9 @@ import com.dewijones92.primavista.practice.PracticeChoice
 import com.dewijones92.primavista.practice.PracticeFocus
 import com.dewijones92.primavista.practice.SkillOutcome
 import com.dewijones92.primavista.practice.SpacedPracticeScheduler
-import com.dewijones92.primavista.score.Corpus
 import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.DifficultySpec
 import com.dewijones92.primavista.score.ExerciseGenerator
-import com.dewijones92.primavista.score.MusicXmlParser
-import com.dewijones92.primavista.score.MusicXmlResult
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.Score
 import com.dewijones92.primavista.score.ScoreSkills
@@ -27,8 +24,6 @@ import com.dewijones92.primavista.score.ScoreSummary
 import com.dewijones92.primavista.score.SkillTag
 import com.dewijones92.primavista.ui.progress.describe
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 private const val TAG = "ladder"
@@ -43,8 +38,7 @@ public class AppPracticeWiring(private val container: AppContainer) : PracticeWi
     override val tonePlayer: TonePlayer get() = container.tonePlayer
     override val preferences: SessionPreferences = StoredPreferences(container, container.diag)
 
-    private val corpusLock = Mutex()
-    private var parsedCorpus: List<Score>? = null
+    private val shipped get() = container.shippedRepertoire
 
     override fun nowEpochMillis(): Long = System.currentTimeMillis()
 
@@ -64,7 +58,7 @@ public class AppPracticeWiring(private val container: AppContainer) : PracticeWi
         choose(input, seed, focus)
 
     private suspend fun choose(input: Polyphony, seed: Long, focus: PracticeFocus?): PracticeSelection {
-        val scores = corpus()
+        val scores = shipped.passages()
         val summaries = scores.map { it.summarise(container.scoreSkills) }
         val states = withContext(Dispatchers.IO) { container.skillStore?.states().orEmpty() }
         val now = nowEpochMillis()
@@ -106,10 +100,34 @@ public class AppPracticeWiring(private val container: AppContainer) : PracticeWi
         return container.exerciseGenerator.generated(seed, spec, setOfNotNull(hearable))
     }
 
+    /**
+     * A whole song is not a unit of practice, so what opens is the most of it the rung he stands on
+     * can hold. The piece keeps its name either way; the passage says which bars.
+     */
     override suspend fun open(piece: CorpusPiece): PracticeSelection? {
-        val score = corpus().firstOrNull { it.id == piece.id }
-        if (score == null) diag.event(TAG, "'${piece.title}' was asked for but is not in the parsed corpus")
-        return score?.let { PracticeSelection(it, emptySet(), "Chosen from the repertoire") }
+        val score = shipped.pieces().firstOrNull { it.id == piece.id }
+        if (score == null) {
+            diag.event(TAG, "'${piece.title}' was asked for but is not in the parsed corpus")
+            return null
+        }
+        val states = withContext(Dispatchers.IO) { container.skillStore?.states().orEmpty() }
+        val standing = container.curriculum.currentStage(states)
+        val passage = shipped.passageFor(score, standing)
+        if (passage == null) {
+            diag.event(
+                TAG,
+                "'${piece.title}' offers nothing any rung admits, so it opens whole " +
+                    "[bars=${score.measures.size} stage=${standing.id.number}]",
+            )
+            return PracticeSelection(score, emptySet(), "Chosen from the repertoire")
+        }
+        diag.event(
+            TAG,
+            "'${piece.title}' opens as ${passage.id.value} [bars=${passage.measures.size} " +
+                "of ${score.measures.size} stage=${standing.id.number}'${standing.title}' " +
+                "rung=${shipped.rungFor(passage)?.number}]",
+        )
+        return PracticeSelection(passage, emptySet(), "Chosen from the repertoire")
     }
 
     override suspend fun save(session: StoredSession, judgements: List<NoteJudgement>) {
@@ -131,12 +149,6 @@ public class AppPracticeWiring(private val container: AppContainer) : PracticeWi
         store.record(outcomes, nowEpochMillis())
         container.journeyWiring.markStanding()
     }
-
-    private suspend fun corpus(): List<Score> = corpusLock.withLock {
-        parsedCorpus
-            ?: withContext(Dispatchers.Default) { parseCorpus(container.musicXmlParser, diag) }
-                .also { parsedCorpus = it }
-    }
 }
 
 private fun ExerciseGenerator.generated(
@@ -144,25 +156,6 @@ private fun ExerciseGenerator.generated(
     spec: DifficultySpec,
     targeting: Set<SkillTag>,
 ): PracticeSelection = PracticeSelection(generate(seed, spec), targeting, drillSummary(targeting))
-
-private fun parseCorpus(parser: MusicXmlParser, diag: Diag): List<Score> = Corpus.pieces.mapNotNull { piece ->
-    when (val parsed = Corpus.parse(piece, parser)) {
-        is MusicXmlResult.Parsed -> {
-            if (parsed.dropped.isNotEmpty()) {
-                diag.event(
-                    TAG,
-                    "'${piece.title}' parsed with ${parsed.dropped.size} dropped: " +
-                        parsed.dropped.joinToString("; ") { it.toString() },
-                )
-            }
-            parsed.score
-        }
-        is MusicXmlResult.Failed -> {
-            diag.event(TAG, "'${piece.title}' failed to parse: ${parsed.reason}")
-            null
-        }
-    }
-}
 
 private fun describeChoice(choice: PracticeChoice): String = when (choice) {
     is PracticeChoice.Piece ->

@@ -1,5 +1,6 @@
 package com.dewijones92.primavista.ui.repertoire
 
+import com.dewijones92.primavista.practice.StageId
 import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.Dropped
 import com.dewijones92.primavista.score.Polyphony
@@ -8,9 +9,14 @@ import com.dewijones92.primavista.score.SkillTag
 /**
  * One shipped piece, as far as this build could read it.
  *
- * [dropped] is carried in full rather than as a count. A piece that parses to *nearly* the right
- * thing teaches wrong notes, so what was approximated has to be inspectable — a number alone tells
- * Dewi something is missing and nothing about whether it matters.
+ * [material] is split from [dropped] rather than counted with it, because the two mean opposite
+ * things. A slur that did not survive changes nothing you read — the app draws from the parsed
+ * score, so the page and the expectation still agree. A dropped triplet leaves a silence where
+ * three notes should be. Only the second is worth alarming anyone about, and lumping them together
+ * put "487 unsupported markings dropped" on every real song in the corpus.
+ *
+ * [opensAs] is how many bars "Practise this" will actually give you. A 197-bar song is not a unit
+ * of practice, and saying so on the card is more honest than opening it and letting Dewi find out.
  */
 internal data class RepertoireRow(
     val piece: CorpusPiece,
@@ -21,5 +27,13 @@ internal data class RepertoireRow(
     val firstPolyphonicBar: Int?,
     val skills: List<SkillTag>,
     val dropped: List<Dropped>,
+    val material: List<Dropped>,
+    val rung: StageId?,
+    val opensAs: Int?,
     val failure: String?,
-)
+) {
+    /** Cosmetic losses: worth stating, not worth a warning. */
+    val decoration: Int get() = dropped.size - material.size
+
+    val isWholePiece: Boolean get() = opensAs == null || opensAs == bars
+}

@@ -117,6 +117,9 @@ public class AppContainer(private val context: Context) {
 
     public val placementRead: PlacementRead = AdaptivePlacementRead(curriculum)
 
+    /** Parsed and windowed once for the whole app: the tab and the scheduler ask the same object. */
+    public val shippedRepertoire: ShippedRepertoire = ShippedRepertoire(musicXmlParser, diag, curriculum)
+
     /** Supplied rather than read inside the fold, so two adjacent reads cannot disagree after a flight. */
     public val zone: ZoneId get() = ZoneId.systemDefault()
 

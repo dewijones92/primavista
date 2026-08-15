@@ -1,7 +1,5 @@
 package com.dewijones92.primavista.score
 
-import kotlin.math.abs
-
 /**
  * Whether a [DifficultySpec] covers a [Score] — "is this music at that level".
  *
@@ -28,14 +26,31 @@ import kotlin.math.abs
  *   first and a check second.
  * - The exact key. A spec names one key; a rung *reads* signatures up to a size, so the check is on
  *   how many accidentals the signature carries, not on which ones.
+ * - [DifficultySpec.maxLeapSemitones]. This one is the least obvious and cost the most to settle.
+ *   It is a *writing* dial — "keep the generated line stepwise so it reads easily" — and reading it
+ *   as a ceiling on what a reader can cope with double-counts a difficulty the range check already
+ *   bounds: every pitch in an admitted passage is one this level reads, so the jump between two of
+ *   them asks nothing new of the eye. Read as a ceiling it also rejected 24,639 corpus passages and
+ *   placed *Ode to Joy* at the tenth rung, on a left-hand jump of a sixth. [SkillTag.Leap] is still
+ *   derived, debited and drilled per note; it is simply not a gate on whether a passage is readable.
  */
 public fun DifficultySpec.admits(score: Score): Admission {
-    val reasons = buildList {
-        addAll(furnitureReasons(score))
-        addAll(noteReasons(score))
-        addAll(leapReasons(score))
-    }
+    val reasons = refusals(score).toList()
     return if (reasons.isEmpty()) Admission.Admitted else Admission.Refused(reasons.distinct())
+}
+
+/**
+ * The same question with no answer built: true when nothing in [score] exceeds this spec.
+ *
+ * It exists because placement asks it of every window against every rung, and building the full
+ * list of reasons only to discard it dominated that pass — a lazy sequence stops at the first note
+ * that refuses. Defined on the same [refusals] as [admits], so the two cannot drift.
+ */
+public fun DifficultySpec.covers(score: Score): Boolean = refusals(score).none()
+
+private fun DifficultySpec.refusals(score: Score): Sequence<String> = sequence {
+    yieldAll(furnitureReasons(score))
+    yieldAll(noteReasons(score))
 }
 
 public sealed interface Admission {
@@ -47,32 +62,32 @@ public sealed interface Admission {
     public val isAdmitted: Boolean get() = this is Admitted
 }
 
-private fun DifficultySpec.furnitureReasons(score: Score): List<String> = buildList {
+private fun DifficultySpec.furnitureReasons(score: Score): Sequence<String> = sequence {
     val extraStaves = score.staves.filterNot { it in staves }
-    if (extraStaves.isNotEmpty()) add("uses ${extraStaves.joinToString()} beyond the ${staves.size} staves here")
+    if (extraStaves.isNotEmpty()) yield("uses ${extraStaves.joinToString()} beyond the ${staves.size} staves here")
     if (!bothHandsActive && score.staves.size > 1 && score.notes.any { it.staff != staves.first() }) {
-        add("both hands play, and this level is hands-separate")
+        yield("both hands play, and this level is hands-separate")
     }
     score.measures.forEach { measure ->
         if (measure.key.accidentalCount > key.accidentalCount) {
-            add("a signature of ${measure.key.accidentalCount} accidentals at bar ${measure.number}")
+            yield("a signature of ${measure.key.accidentalCount} accidentals at bar ${measure.number}")
         }
         measure.clefs.forEach { (staff, clef) ->
-            if (staff in staves && clefs[staff] != clef) add("$clef on $staff at bar ${measure.number}")
+            if (staff in staves && clefs[staff] != clef) yield("$clef on $staff at bar ${measure.number}")
         }
     }
 }
 
-private fun DifficultySpec.noteReasons(score: Score): List<String> = buildList {
+private fun DifficultySpec.noteReasons(score: Score): Sequence<String> = sequence {
     score.notes.forEach { note ->
         val bounds = range[note.staff]
-        if (bounds != null && note.pitch.midi !in bounds) add("${note.pitch} is outside this level's range")
-        if (note.duration.symbol !in symbols) add("${note.duration.symbol} notes")
-        if (note.duration.dots > maxDots) add("${note.duration.dots} augmentation dots")
-        if (!allowTuplets && note.duration.tupletNumerator != 1) add("tuplets")
+        if (bounds != null && note.pitch.midi !in bounds) yield("${note.pitch} is outside this level's range")
+        if (note.duration.symbol !in symbols) yield("${note.duration.symbol} notes")
+        if (note.duration.dots > maxDots) yield("${note.duration.dots} augmentation dots")
+        if (!allowTuplets && note.duration.tupletNumerator != 1) yield("tuplets")
         val printed = printedAccidental(score, note)
         if (printed != null && printed !in allowedAlterations) {
-            add("an accidental of ${printed.semitones} semitones")
+            yield("an accidental of ${printed.semitones} semitones")
         }
     }
 }
@@ -86,16 +101,3 @@ private fun printedAccidental(score: Score, note: Note): Alter? {
     val key = score.measures.lastOrNull { it.start <= note.onset }?.key ?: KeySignature.C
     return note.pitch.alter.takeIf { it != KeySignatureAlterations.impliedAlter(key, note.pitch.letter) }
 }
-
-/** Melodic, so measured within a hand and a voice: the gap between the hands is not a leap. */
-private fun DifficultySpec.leapReasons(score: Score): List<String> =
-    score.attackedNotes
-        .groupBy { it.staff to it.voice }
-        .values
-        .flatMap { line ->
-            line.sortedBy { it.onset.value }
-                .zipWithNext()
-                .map { (from, to) -> abs(to.pitch.midi.number - from.pitch.midi.number) }
-                .filter { it > maxLeapSemitones }
-                .map { "a leap of $it semitones, beyond this level's $maxLeapSemitones" }
-        }

@@ -53,7 +53,8 @@ import com.dewijones92.primavista.ui.progress.describe
 
 @Composable
 internal fun RepertoireScreen(
-    rows: List<RepertoireRow>?,
+    rows: List<RepertoireRow>,
+    stillReading: Int,
     onPractise: (CorpusPiece) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -63,12 +64,11 @@ internal fun RepertoireScreen(
         verticalArrangement = Arrangement.spacedBy(CARD_GAP),
     ) {
         item { RepertoireHeader() }
-        when {
-            rows == null -> items(Corpus.pieces) { SkeletonCard() }
-            rows.isEmpty() -> item { NoPieces() }
-            else -> items(rows, key = { it.piece.id.value }) { row ->
-                RepertoireCard(row, onPractise)
-            }
+        items(rows, key = { it.piece.id.value }) { row -> RepertoireCard(row, onPractise) }
+        if (stillReading > 0) {
+            items(stillReading) { SkeletonCard() }
+        } else if (rows.isEmpty()) {
+            item { NoPieces() }
         }
     }
 }
@@ -81,8 +81,8 @@ private fun RepertoireHeader() {
             Text("Repertoire", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(2.dp))
             Text(
-                text = "${Corpus.pieces.size} pieces, all public domain. Tap one to read what " +
-                    "it demands, then practise it.",
+                text = "${Corpus.pieces.size} pieces, all public domain, easiest first. Tap one " +
+                    "to read what it demands, then practise it.",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -151,29 +151,61 @@ private fun RepertoireCard(row: RepertoireRow, onPractise: (CorpusPiece) -> Unit
 private fun FactRow(row: RepertoireRow) {
     val notation = LocalNotationColors.current
     Row(horizontalArrangement = Arrangement.spacedBy(CHIP_GAP)) {
+        Chip(
+            text = row.rung?.let { "stage ${it.number}" } ?: "past the path",
+            tint = if (row.rung == null) MaterialTheme.colorScheme.onSurfaceVariant else notation.playhead,
+        )
         Chip("${row.bars} bars", MaterialTheme.colorScheme.onSurfaceVariant)
-        Chip("${row.notes} notes", MaterialTheme.colorScheme.onSurfaceVariant)
         Chip("${row.tempoBpm} bpm", MaterialTheme.colorScheme.onSurfaceVariant)
         Chip(
             text = if (row.polyphony == Polyphony.Poly) "two hands" else "single line",
             tint = if (row.polyphony == Polyphony.Poly) notation.playhead else notation.correct,
         )
     }
+    PassageNote(row)
 }
 
 /**
- * The dropped count stays visible collapsed, in the error colour, because it is the one fact on
- * this screen that changes what the notation on the practice screen actually means.
+ * A whole song is not a unit of practice. Saying which bars will open is more honest than opening
+ * a 197-bar Schubert and letting Dewi discover it while the playhead is already moving.
+ */
+@Composable
+private fun PassageNote(row: RepertoireRow) {
+    if (row.isWholePiece) return
+    Spacer(Modifier.height(GAP))
+    Text(
+        text = row.opensAs?.let { "Opens as a $it-bar passage, chosen for where you are." }
+            ?: "No part of this is readable at any rung of the path yet.",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/**
+ * Only **material** loss gets the error colour, and it stays visible collapsed because it is the
+ * one fact on this screen that changes what the notation on the practice screen actually means.
+ * Decoration is stated in the same breath as everything else: the app draws from the parsed score,
+ * so a missing slur leaves the page and the expectation agreeing.
  */
 @Composable
 private fun DroppedBanner(row: RepertoireRow) {
-    if (row.dropped.isEmpty()) return
+    if (row.material.isNotEmpty()) {
+        Spacer(Modifier.height(GAP))
+        Text(
+            text = "${row.material.size} thing${if (row.material.size == 1) "" else "s"} could not be " +
+                "read — there is music missing from this page.",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+        return
+    }
+    if (row.decoration == 0) return
     Spacer(Modifier.height(GAP))
     Text(
-        text = "${row.dropped.size} unsupported marking${if (row.dropped.size == 1) "" else "s"} " +
-            "dropped — what you read here is not quite the printed page.",
+        text = "${row.decoration} marking${if (row.decoration == 1) "" else "s"} " +
+            "(slurs, dynamics and the like) are not drawn. Every note is.",
         style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.error,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -211,15 +243,30 @@ private fun ExpandedDetail(row: RepertoireRow, onPractise: (CorpusPiece) -> Unit
         )
         Spacer(Modifier.height(SECTION_GAP))
     }
-    if (row.dropped.isNotEmpty()) {
-        Heading("Dropped from the source")
-        row.dropped.forEach { dropped ->
+    if (row.material.isNotEmpty()) {
+        Heading("Music missing from this page")
+        row.material.forEach { dropped ->
             Text(
                 text = dropped.toString(),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.error,
             )
         }
+        Spacer(Modifier.height(SECTION_GAP))
+    }
+    if (row.decoration > 0) {
+        Heading("Not drawn")
+        Text(
+            text = row.dropped.filterNot { it in row.material }
+                .groupingBy { it.element }
+                .eachCount()
+                .entries
+                .sortedByDescending { it.value }
+                .take(DROPPED_KINDS_SHOWN)
+                .joinToString("  ·  ") { "${it.key} ×${it.value}" },
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Spacer(Modifier.height(SECTION_GAP))
     }
     Heading("Where it comes from")
@@ -282,6 +329,7 @@ private fun NoPieces() {
 private const val HALF_TURN = 180f
 private const val CHIP_ALPHA = 0.16f
 private const val SKILLS_SHOWN = 8
+private const val DROPPED_KINDS_SHOWN = 6
 private const val TITLE_BONE = 0.7f
 private const val LINE_BONE = 0.45f
 private val SCREEN_PADDING = 16.dp
