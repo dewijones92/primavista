@@ -13,7 +13,8 @@ never silently abandoned.
 
 | Item | Priority | Area | Why it matters |
 |---|---|---|---|
-| [measure-audio-latency](measure-audio-latency.md) | high | audio | Mechanism built and wired; what is left is one number only Dewi's phone can give — Settings → Audio timing → Measure it, in a quiet room |
+| [measure-audio-latency](measure-audio-latency.md) | high | audio | Three defects that made it refuse on every device are fixed (2026-08-16); still needs one successful run on Dewi's phone, at high media volume |
+| [mic-held-by-a-paused-session](mic-held-by-a-paused-session.md) | medium | audio | A paused PLAY IT session keeps the microphone open, so calibration refuses with "the mic is in use" when nothing visibly is |
 | [midi-input](midi-input.md) | medium | input | The third `AnswerSource` adapter: exact, zero-ambiguity, and the only honest route to judging polyphony |
 | [repertoire-load-cost](repertoire-load-cost.md) | medium | score | Reading the corpus holds the emulator in GC for 12 seconds; unmeasured on the real phone |
 | [remove-superseded-repertoire-store](remove-superseded-repertoire-store.md) | low | database | A whole unwired Room store that two other things now do better; removing it needs a migration of its own |

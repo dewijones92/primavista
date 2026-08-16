@@ -69,10 +69,30 @@ angle a test looks from.
 7. **Provenance is in the report.** `lat=…ms src=Measured|Assumed` on every mic session, with
    the route and the sentence explaining which figure was chosen and why.
 
+## It refused on the real phone, and why (2026-08-16)
+
+The first run on a Pixel 7 refused, and the claim above that "the mechanism is built" was wrong:
+it could not have measured anything on any device. Three defects, all now fixed and each gated by
+a test that was reverted to confirm it fails — see `.claude/CODE-NOTES.md` for the full account.
+
+1. The timebase check read `CaptureStart.Started.timestampProvenance`, an eager snapshot taken
+   before the first read, so it was `ExtrapolatedFromStart` on every device for ever. Whenever the
+   click *was* heard, the next line refused it.
+2. The noise floor was the median of the same buffer being searched, and the 40ms click was longer
+   than the 21ms window — so the detector measured the click and called it the room. The click is
+   10ms now and the room is measured from the priming reads.
+3. The refusal quoted the last of 48 buffers, i.e. silence after the click. His phone reported
+   `peak 0.011` and that was **his room**, not the click.
+
+The suite was green over all of it because `FakeCapture` reported device timestamps the real
+adapter cannot produce, and planted a one-sample impulse into exact zeros.
+
 ## What is left
 
-- **Run it on Dewi's phone.** Settings → Audio timing → Measure it, in a quiet room. The
-  figure and its confidence are logged under `dewidebug.loopback` and stored per route.
+- **Run it on Dewi's phone**, with the **media volume up** — the click plays as media, so the
+  slider scales it, and his first attempt was at 9/25. Settings → Audio timing → Measure it, in a
+  quiet room. Every refusal now names the room it measured, the media volume, and the loudest
+  buffer it saw, so a second failure is diagnosable from the sentence alone.
 - **Re-measure per route** as he uses them — a wired headset and a Bluetooth one are separate
   rows and each needs its own run.
 
