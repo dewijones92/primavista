@@ -90,6 +90,25 @@ class AdmissionTest {
         assertTrue(copied.admits(inKey(KeySignature(FIVE_ACCIDENTALS))).isAdmitted)
     }
 
+    /**
+     * G and F both carry one accidental, so "the plainest" has to break the tie deterministically.
+     * A plain `minBy` returns whichever the set iterates first, and a set's order does not survive
+     * the database — the same level answered G in memory and F after a `DifficultyCodec` round
+     * trip, which sorts. That would move a level's pitch range depending on where its spec had
+     * been, so the two orderings are asserted to agree.
+     */
+    @Test
+    fun `the plainest key does not depend on the order the keys arrived in`() {
+        val asWritten = setOf(KeySignature(1), KeySignature(-1), KeySignature(2), KeySignature(-2))
+        val asStored = asWritten.map { it.fifths }.sorted().map { KeySignature(it) }.toSet()
+
+        assertEquals(
+            spec(keys = asWritten).plainestKey,
+            spec(keys = asStored).plainestKey,
+        )
+        assertEquals(spec(keys = asWritten.reversed().toSet()).plainestKey, spec(keys = asStored).plainestKey)
+    }
+
     @Test
     fun `a signature is judged on how many accidentals it carries, not which ones`() {
         val twoSharps = spec(keys = setOf(KeySignature(TWO_SHARPS)))

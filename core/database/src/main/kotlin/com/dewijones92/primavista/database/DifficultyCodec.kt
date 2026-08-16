@@ -103,7 +103,9 @@ public object DifficultyCodec {
         return DifficultySpec(
             staves = staves,
             clefs = clefs,
-            keys = fields.items(FIFTHS) { KeySignature(intOf(it)) }.toSet(),
+            keys = fields.items(FIFTHS) { KeySignature(intOf(it)) }
+                .toSet()
+                .also { require(it.isNotEmpty()) { "stored spec names no key, so it cannot be rebuilt" } },
             time = TimeSignature(fields.int(BEATS), fields.int(BEAT_UNIT)),
             bars = fields.int(BARS),
             range = range,
@@ -117,7 +119,8 @@ public object DifficultyCodec {
             // Absent in rows written before the reading ceiling was split from the writing key.
             // Defaulting to the key's own size is exactly what those rows meant.
             maxKeyAccidentals = fields[MAX_KEY]?.let { intOf(it) }
-                ?: fields.items(FIFTHS) { abs(intOf(it)) }.max(),
+                ?: fields.items(FIFTHS) { abs(intOf(it)) }.maxOrNull()
+                ?: 0,
         )
     }
 

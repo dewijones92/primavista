@@ -73,7 +73,7 @@ internal fun RepertoireScreen(
         item { OpenAFile(picked, onOpenFile, onPractise, onDismissPicked) }
         items(rows, key = { it.piece.id.value }) { row -> RepertoireCard(row, onPractise) }
         if (stillReading > 0) {
-            items(stillReading) { SkeletonCard() }
+            items(stillReading.coerceAtMost(Corpus.pieces.size)) { SkeletonCard() }
         } else if (rows.isEmpty()) {
             item { NoPieces() }
         }

@@ -70,14 +70,12 @@ public data class ClaimedVerdict(val noteIndex: Int, val kind: String, val dtMil
     public companion object {
         public fun of(judgement: NoteJudgement): ClaimedVerdict = ClaimedVerdict(
             noteIndex = (judgement as? NoteJudgement.OfNote)?.noteIndex ?: EXTRA_INDEX,
-            kind = kindOf(judgement.verdict),
+            kind = judgement.verdict.kind,
             dtMillis = dtOf(judgement.verdict),
         )
 
         /** A [Verdict.Extra] answers to no notated note; it is not note number minus one. */
         public const val EXTRA_INDEX: Int = -1
-
-        private fun kindOf(verdict: Verdict): String = verdict::class.simpleName ?: "Unknown"
 
         private fun dtOf(verdict: Verdict): Double? = when (verdict) {
             is Verdict.Correct -> verdict.dtMillis

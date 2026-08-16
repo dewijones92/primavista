@@ -5,6 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private const val MIN_IMPORTED_BARS = 8
+private val PASSAGE_LENGTHS = listOf(4, 8, 16)
 
 class CorpusTest {
 
@@ -100,6 +101,24 @@ class CorpusTest {
         assertEquals(2, chord.value.size)
     }
 
+    /**
+     * The guard the short-bar leak escaped. Every passage of every shipped piece must contain only
+     * events that really fall inside its bars — measured against the **next bar's start**, which is
+     * where a bar actually ends, rather than against what its time signature nominally holds.
+     *
+     * Corpus-wide because that is where it was found: 126 leaked events across 41 songs, and none
+     * of them in a hand-written fixture. Real engraving has short bars; invented fixtures do not.
+     */
+    @Test
+    fun `no passage of any shipped piece reaches past its own last barline`() {
+        val leaks = Corpus.pieces.flatMap { piece ->
+            val score = scoreOf(piece)
+            PASSAGE_LENGTHS.flatMap { bars -> leaksIn(piece.id.value, score, bars) }
+        }
+
+        assertEquals(emptyList<String>(), leaks)
+    }
+
     @Test
     fun `every piece records where it came from and under what licence`() {
         for (piece in Corpus.pieces) {
@@ -133,6 +152,18 @@ class CorpusTest {
 
     private val handAuthored get() = Corpus.pieces.filter { it.part == PartChoice.First }
     private val imported get() = Corpus.pieces.filter { it.part == PartChoice.Keyboard }
+
+    /** Every window of [bars] whose event count disagrees with the bars it claims to cover. */
+    private fun leaksIn(id: String, score: Score, bars: Int): List<String> =
+        (score.measures.indices step bars)
+            .filter { it + bars <= score.measures.size }
+            .mapNotNull { from ->
+                val endsAt = score.measures.getOrNull(from + bars)?.start
+                    ?: score.measures.last().let { it.start + it.time.measureTicks }
+                val expected = score.events.count { it.onset >= score.measures[from].start && it.onset < endsAt }
+                val got = score.excerpt(from, bars).events.size
+                "$id bars ${from + 1}..${from + bars}: $got events, expected $expected".takeIf { got != expected }
+            }
 
     private fun scoreOf(piece: CorpusPiece): Score =
         (Corpus.parse(piece, parser) as MusicXmlResult.Parsed).score

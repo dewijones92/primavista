@@ -198,4 +198,21 @@ class DifficultyCodecTest {
             assertNull("expected '$encoded' to be unreadable", DifficultyCodec.decode(encoded))
         }
     }
+
+    /**
+     * Every refusal has to carry a reason a human can act on. An empty `fifths=` used to reach
+     * `max()` on an empty list, whose `NoSuchElementException` has a null message — so the row came
+     * back as `Unreadable(reason = "java.util.NoSuchElementException")`, a blank where docs/spec.md
+     * I7 and this type's own contract both demand a sentence.
+     */
+    @Test
+    fun aStoredSpecNamingNoKeyRefusesWithAReasonRatherThanAnExceptionName() {
+        val stored = DifficultyCodec.encode(sampleSpec()).replace(";fifths=-3;", ";fifths=;")
+
+        val reading = DifficultyCodec.read(stored)
+
+        assertTrue("$reading", reading is SpecReading.Unreadable)
+        val reason = (reading as SpecReading.Unreadable).reason
+        assertTrue(reason, reason.contains("no key"))
+    }
 }

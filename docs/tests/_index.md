@@ -33,15 +33,15 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 
 | Module | JVM tests | Instrumented | Holds |
 |---|---|---|---|
-| `:core:score` | 143 | — | the model, the MusicXML subset, the generator's determinism, `Score.polyphony` (spec I3's predicate), part selection, passages, and whether a spec admits a piece |
+| `:core:score` | 147 | — | the model, the MusicXML subset, the generator's determinism, `Score.polyphony` (spec I3's predicate), part selection, passages, and whether a spec admits a piece |
 | `:core:audio` | 88 | 22 | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM; the AudioTrack and AudioRecord bridges on a device |
 | `:core:notation` | 79 | — | staff geometry for both clefs, stems from font anchors, beams, leger lines, `xOf` agreeing with note placement (spec I1) |
-| `:core:practice` | 135 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5), what a piece offers to read, how far ahead the page is covered, and re-judging a session from its own report (spec I7) |
+| `:core:practice` | 139 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5), what a piece offers to read, how far ahead the page is covered, and re-judging a session from its own report (spec I7) |
 | `:lib:pitch` | 60 | — | YIN against synthesised tones, onset separation of repeated notes, vibrato held as one note |
-| `:core:database` | 70 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
+| `:core:database` | 74 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
-| `:app` | 97 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, and screen logic that does not need a device |
-| **Total** | **684** | **99** | |
+| `:app` | 105 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, and screen logic that does not need a device |
+| **Total** | **704** | **99** | |
 
 ## Deliberately uncovered (and why)
 
@@ -62,6 +62,28 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 - **How long the corpus takes to read on a real phone.** Measured on the emulator through the GC log
   (see `../todos/repertoire-load-cost.md`); no test can measure the phone, and the emulator is a poor
   proxy for it.
+
+## What an adversarial review found that 684 green tests did not
+
+Six lenses over one day's work, each finding attacked by a skeptic, produced **five confirmed
+defects** — and their shapes say where a test suite goes thin:
+
+- **A boundary the fixtures never had.** Real engraving has short bars (a pickup, a bar split across
+  a system); hand-written fixtures do not. Passage windows trusted the time signature and pulled the
+  next bar's notes in — 126 leaked events across 17 of the 44 shipped pieces.
+- **A cancellation nothing drove.** Leaving the Repertoire tab mid-parse left the arrivals behind,
+  so the next visit appended all 44 again. Duplicate keys in a `LazyColumn` are a crash.
+- **A build variant no test runs in.** R8 renamed every `Verdict`, so the replay block spec I7 rests
+  on read `claimed=0:n22:1.5` on the phone while reading `WrongPitch` in debug.
+- **A state nothing left.** The reading-ahead cover was cleared on load and on the dial, but not on
+  *finish*, so the review page — the one that exists to show verdict-coloured noteheads — was blank.
+- **A path a refactor split.** Merging two racing `LaunchedEffect`s meant a piece opened from the
+  Repertoire tab never resolved the stored input: a saved PLAY IT session opened silently on TAP.
+
+Every one is "the code is right in the case someone thought to write down". All five now have a
+test that was **made to fail first**, and the R8 one has a CI gate that was itself made to fail
+before being trusted — the obvious version of that gate, grepping the release DEX for `WrongPitch`,
+passed either way, because a Kotlin data class bakes its own name into `toString()`.
 
 ## Two properties worth knowing about
 

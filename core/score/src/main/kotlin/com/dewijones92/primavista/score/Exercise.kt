@@ -52,8 +52,16 @@ public data class DifficultySpec(
      * a staff step into a pitch, and the search for a key that can write a given accidental. The
      * plainest is chosen because it is stable: adding a harder key to a level must not move where
      * its notes sit on the staff.
+     *
+     * The tie-break on [KeySignature.fifths] is what makes it *actually* stable, and is not
+     * decoration. `minBy` alone returns whichever equally-plain key the set happens to iterate
+     * first, and a set's order is not preserved through the database: G major and F major both
+     * carry one accidental, so a level holding both answered G in memory and F after a round trip
+     * through `DifficultyCodec`, which sorts. That would move a level's pitch range depending on
+     * where its spec had been.
      */
-    public val plainestKey: KeySignature get() = keys.minBy { it.accidentalCount }
+    public val plainestKey: KeySignature
+        get() = keys.minWith(compareBy({ it.accidentalCount }, { it.fifths }))
 
     public val readableKeyAccidentals: Int get() = maxOf(maxKeyAccidentals, keys.maxOf { it.accidentalCount })
 

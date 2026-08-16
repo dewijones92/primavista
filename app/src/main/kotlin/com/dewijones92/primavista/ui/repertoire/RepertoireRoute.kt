@@ -11,6 +11,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -18,6 +19,10 @@ import com.dewijones92.primavista.di.AppContainer
 import com.dewijones92.primavista.di.PieceParse
 import com.dewijones92.primavista.di.ShippedRepertoire
 import com.dewijones92.primavista.score.Polyphony
+import com.dewijones92.primavista.score.ScoreId
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val UNREACHABLE = Int.MAX_VALUE
 
@@ -41,13 +46,24 @@ public fun RepertoireRoute(container: AppContainer, modifier: Modifier = Modifie
     val context = LocalContext.current
     var picked by remember { mutableStateOf<Picked?>(null) }
     LaunchedEffect(shipped) { shipped.load() }
+    // Off the main thread, like every other parse in the app: reading the bytes and building a DOM
+    // costs about a second per piece on a phone, and the picker's callback runs on the main thread.
+    val scope = rememberCoroutineScope()
     val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        picked = uri?.let { readPickedFile(context, it, container) }
+        if (uri != null) {
+            scope.launch { picked = withContext(Dispatchers.Default) { readPickedFile(context, uri, container) } }
+        }
     }
+    // Derived once per piece, not once per arrival. Pieces land one at a time, so a plain `map`
+    // over the growing list re-graded every score already in it — 44 emissions summing to hundreds
+    // of whole-score gradings on the main thread, each walking every note of a song up to 232 bars.
+    // A `PieceParse` is immutable and arrives once, so its id is a sound cache key.
+    val rows = remember { mutableMapOf<ScoreId, RepertoireRow>() }
     RepertoireScreen(
-        rows = arrived.map { rowFor(container, shipped, it) }
+        rows = arrived
+            .map { parse -> rows.getOrPut(parse.piece.id) { rowFor(container, shipped, parse) } }
             .sortedWith(compareBy({ it.rung?.number ?: UNREACHABLE }, { it.piece.title })),
-        stillReading = shipped.expected - arrived.size,
+        stillReading = (shipped.expected - arrived.size).coerceAtLeast(0),
         onPractise = { score ->
             container.diag.event(
                 "repertoire",

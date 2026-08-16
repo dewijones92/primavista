@@ -18,6 +18,7 @@ import com.dewijones92.primavista.notation.GlyphMetricsSource
 import com.dewijones92.primavista.notation.StaffLayout
 import com.dewijones92.primavista.practice.AnswerSource
 import com.dewijones92.primavista.practice.Conductor
+import com.dewijones92.primavista.practice.FakeClock
 import com.dewijones92.primavista.practice.InputLatency
 import com.dewijones92.primavista.practice.KeyboardTapSource
 import com.dewijones92.primavista.practice.NoteJudgement
@@ -90,8 +91,11 @@ internal class FakeWiring(
 
     override fun microphoneGranted(): Boolean = micGranted
 
+    /** Frozen unless a test moves it, so a session only advances when the test says so. */
+    val clock: FakeClock = FakeClock()
+
     override fun conductorFor(score: Score, tempoCeilingBpm: Int): Conductor = TempoConductor(
-        clock = { 0L },
+        clock = clock,
         tempoBpm = sessionTempoBpm(score.defaultTempoBpm, tempoCeilingBpm),
         countInBeats = 0,
         time = score.measures.firstOrNull()?.time ?: TimeSignature.FourFour,

@@ -55,7 +55,7 @@ private fun gateFor(container: AppContainer, placement: PlacementReading): Intro
     val show = placement == PlacementReading.NeverTaken
     container.diag.event(
         TAG,
-        "introduction ${if (show) "runs" else "skipped"}: placement=${placement::class.simpleName}",
+        "introduction ${if (show) "runs" else "skipped"}: placement=${placement.kind}",
     )
     return if (show) IntroGate.Show else IntroGate.Skip
 }

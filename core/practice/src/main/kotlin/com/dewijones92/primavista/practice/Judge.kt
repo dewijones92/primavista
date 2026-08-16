@@ -13,20 +13,43 @@ import com.dewijones92.primavista.score.Ticks
  * is logged, with its unit spelled — two different situations must never produce the same line.
  */
 public sealed interface Verdict {
-    public data class Correct(val dtMillis: Double) : Verdict
+    /**
+     * This verdict's name, as a **literal** — never `this::class.simpleName`.
+     *
+     * The release build minifies (`isMinifyEnabled = true`), and R8 renames anything reflective, so
+     * a report from the APK Dewi actually installs would carry `claimed=2:a:` instead of
+     * `WrongPitch` and docs/spec.md I7 would hold in debug and nowhere else. Declared abstract so
+     * a new verdict cannot be added without naming itself: that makes the guard a compile error
+     * rather than a test nobody thought to write (CLAUDE.md, *Shift left*, rung 2).
+     */
+    public val kind: String
 
-    public data class WrongPitch(val expected: Midi, val heard: Midi, val dtMillis: Double) : Verdict
+    public data class Correct(val dtMillis: Double) : Verdict {
+        override val kind: String get() = "Correct"
+    }
+
+    public data class WrongPitch(val expected: Midi, val heard: Midi, val dtMillis: Double) : Verdict {
+        override val kind: String get() = "WrongPitch"
+    }
 
     /** Right pitch, outside the tolerance window on the early side. */
-    public data class Early(val dtMillis: Double) : Verdict
+    public data class Early(val dtMillis: Double) : Verdict {
+        override val kind: String get() = "Early"
+    }
 
-    public data class Late(val dtMillis: Double) : Verdict
+    public data class Late(val dtMillis: Double) : Verdict {
+        override val kind: String get() = "Late"
+    }
 
     /** The window passed with nothing played. Detected on a clock tick, never by waiting. */
-    public data object Missed : Verdict
+    public data object Missed : Verdict {
+        override val kind: String get() = "Missed"
+    }
 
     /** Something played that no notated note was expecting. */
-    public data class Extra(val heard: Midi, val atTicks: Ticks) : Verdict
+    public data class Extra(val heard: Midi, val atTicks: Ticks) : Verdict {
+        override val kind: String get() = "Extra"
+    }
 
     public val isClean: Boolean get() = this is Correct
 }

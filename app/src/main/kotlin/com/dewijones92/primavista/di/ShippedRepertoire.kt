@@ -94,6 +94,12 @@ public class ShippedRepertoire(
     public fun passageFor(score: Score, stage: Stage): Score? = repertoire.passageFor(score, stage)
 
     private suspend fun read(): List<PieceParse> = coroutineScope {
+        // Emptied first because a read can be **cancelled**: the Repertoire tab starts it from a
+        // LaunchedEffect, so leaving the tab kills it mid-way and leaves whatever had already
+        // landed. Appending to that on the next attempt showed 66 pieces where 44 exist — and the
+        // rows are keyed by piece id in a LazyColumn, where a duplicate key is a crash rather than
+        // a repeat, with `expected - arrived` going negative right behind it.
+        arriving.value = emptyList()
         val parses = Corpus.pieces.map { piece -> async { readOne(piece).also(::landed) } }.awaitAll()
         diag.event(
             TAG,

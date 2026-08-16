@@ -160,4 +160,33 @@ class SessionReadsSettingsTest {
         assertFalse("the mic session should be silent", viewModel.state.value.metronomeOn)
         assertTrue("the stored preference was overwritten by a mute", wiring.settings.metronomeOn)
     }
+
+    /**
+     * Opening a piece from the Repertoire tab is a session starting, so it has to settle what is
+     * listening. It did not for one commit: a saved PLAY IT preference opened silently on TAP,
+     * which is a wrong answer given quietly — what docs/spec.md I3 exists to prevent.
+     */
+    @Test
+    fun `a piece opened from the repertoire still honours the stored input`() {
+        val wiring = FakeWiring(PracticeSettings(inputLabel = "mic"), micGranted = true)
+        val viewModel = PracticeViewModel(wiring)
+
+        viewModel.openScore(requestId = 1, score = wiring.score)
+        viewModel.awaitLoaded()
+
+        assertEquals(InputMode.Mic, viewModel.state.value.input)
+    }
+
+    /** And a revoked permission must still surface, rather than the session opening as if granted. */
+    @Test
+    fun `a piece opened from the repertoire falls back to tap when the mic is revoked`() {
+        val wiring = FakeWiring(PracticeSettings(inputLabel = "mic"), micGranted = false)
+        val viewModel = PracticeViewModel(wiring)
+
+        viewModel.openScore(requestId = 1, score = wiring.score)
+        viewModel.awaitLoaded()
+
+        assertEquals(InputMode.Tap, viewModel.state.value.input)
+        assertNotNull(viewModel.state.value.notice)
+    }
 }

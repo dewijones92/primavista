@@ -50,7 +50,7 @@ private class Passages(private val score: Score) {
         }
         val window = score.measures.subList(fromIndex, minOf(fromIndex + bars, score.measures.size))
         val from = window.first().start
-        val until = window.last().let { it.start + it.time.measureTicks }
+        val until = endOf(fromIndex + bars, window.last())
         // An event that starts inside the window is kept whole, even if it rings past the last
         // barline: clipping it would produce a duration nobody could notate.
         val kept = ordered.subList(firstAtOrAfter(from.value), firstAtOrAfter(until.value))
@@ -63,6 +63,19 @@ private class Passages(private val score: Score) {
             events = kept.map { it.rebased(from, hasTieInto(kept, it)) },
         )
     }
+
+    /**
+     * Where the window really ends: the **start of the next bar**, not this bar's start plus what
+     * its time signature says it should hold.
+     *
+     * Those differ whenever a measure is short, which real music does constantly — a pickup, or a
+     * bar split across a system. Trusting the time signature overshot the barline and pulled the
+     * following bar's notes into the passage: 126 leaked events across the shipped corpus, e.g.
+     * `lieder-lc8873154` bars 13-16, whose true end is tick 433,440 against a computed 453,600.
+     * Only the last bar of a piece has no successor to ask, and there the signature is all there is.
+     */
+    private fun endOf(afterIndex: Int, last: Measure): Ticks =
+        score.measures.getOrNull(afterIndex)?.start ?: (last.start + last.time.measureTicks)
 
     private fun firstAtOrAfter(tick: Long): Int {
         val found = onsets.binarySearch(tick)

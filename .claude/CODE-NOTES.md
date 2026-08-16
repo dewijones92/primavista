@@ -2906,3 +2906,35 @@ Agents implementing a module append their own `##` section and never rewrite ano
 - **The generator's per-exercise state is bundled as `Writing`.** Threading the chosen key through
   took `staffEvents` to seven parameters; the spec, the bar filler, the random source and the key
   are all fixed for the whole exercise, so they travel together and the per-staff call takes three.
+
+## The R8 lesson, and what a review caught that six commits of testing did not
+
+- **`this::class.simpleName` in a diagnostics report is a debug-only feature.** The release build
+  sets `isMinifyEnabled = true`, so R8 renamed every `Verdict` subtype — `mapping.txt` shows
+  `Verdict$WrongPitch -> n22` — and the replay block that docs/spec.md I7 rests on would read
+  `claimed=0:n22:1.5` on the phone while reading `claimed=2:WrongPitch:-222.420635` in the debug
+  build the evidence was captured from. Worse than useless: R8's name pool is per build, so
+  re-judging a report on a *different* build would disagree on every note — a false disagreement,
+  the exact opposite of the teeth I7 asks for. `Verdict`, `ScoreOrigin` and `PlacementReading` now
+  declare `kind` **abstract**, so a new case cannot be added without naming itself in a literal.
+
+- **The obvious CI guard for it does not work, and was only found out by making it fail.** Grepping
+  the release DEX for `WrongPitch` passes either way, because a Kotlin data class bakes its own name
+  into the `toString()` it generates. Reverting one name to reflection, rebuilding release and
+  re-running the check produced a green result — so the check went in the bin. The gate that ships
+  greps the **source** for a reflectively-derived `kind`, which was verified to fire on exactly that
+  revert and to pass on the literal form, and its comment says plainly what it does not prove.
+
+- **A verdict is spelled twice, deliberately, and `VerdictKindCorrespondenceTest` is the licence for
+  it.** `VerdictKinds.WRONG_PITCH` is `"wrongPitch"` and is **on disk** in every session row already
+  written; `Verdict.kind` is `"WrongPitch"` and is prose in a shared report. Neither can defer to
+  the other without either a pointless data migration or an uglier report, so per CLAUDE.md the
+  duplication is recorded here with its reason and held by a one-to-one correspondence test.
+
+- **Three defects shipped in code that had 684 green tests, and an adversarial review found all
+  three.** Worth knowing what kind they were, because it says where the tests were thin:
+  a boundary the fixtures never exercised (short bars exist in real engraving and in none of the
+  hand-written scores — 126 leaked events across 17 of 44 shipped pieces); a **cancellation** path
+  no test drove (leaving the Repertoire tab mid-parse duplicated all 44 rows, and duplicate keys in
+  a `LazyColumn` are a crash, not a repeat); and a **build variant** no test runs in (R8). All three
+  are "the code is right in the case anyone thought to write down".

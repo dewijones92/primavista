@@ -114,9 +114,20 @@ public value class ScoreId(public val value: String)
  * That is the highest-value line in the report (docs/todos/diagnostics-report.md).
  */
 public sealed interface ScoreOrigin {
-    public data class Parsed(val sourceName: String, val licence: String) : ScoreOrigin
+    /**
+     * A **literal** name for a report, never `this::class.simpleName` — the release build minifies,
+     * so a reflective name reaches Dewi's phone as `a`. Abstract, so a new origin cannot be added
+     * without naming itself. See [com.dewijones92.primavista.score.ScoreOrigin.Generated].
+     */
+    public val kind: String
 
-    public data class Generated(val seed: Long, val spec: DifficultySpec) : ScoreOrigin
+    public data class Parsed(val sourceName: String, val licence: String) : ScoreOrigin {
+        override val kind: String get() = "Parsed"
+    }
+
+    public data class Generated(val seed: Long, val spec: DifficultySpec) : ScoreOrigin {
+        override val kind: String get() = "Generated"
+    }
 }
 
 /**

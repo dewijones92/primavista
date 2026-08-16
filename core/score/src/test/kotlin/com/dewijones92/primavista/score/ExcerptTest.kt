@@ -92,6 +92,32 @@ class ExcerptTest {
         )
     }
 
+    /**
+     * A short bar — a pickup, or one split across a system — holds less than its time signature
+     * says, so a window that ends on one must stop at the **next bar's start**, not at this bar's
+     * start plus a nominal measure. Trusting the signature pulled the following bar's notes into
+     * the passage: 126 leaked events across the shipped corpus before this was fixed.
+     */
+    @Test
+    fun `a window ending on a short bar does not pull in the next bar`() {
+        val withPickup = shortSecondBar()
+
+        val passage = withPickup.excerpt(fromIndex = 0, bars = 2)
+
+        assertEquals(listOf(0L, QUARTER, 4 * QUARTER), passage.notes.map { it.onset.value })
+        assertTrue("bar three leaked in", passage.notes.none { it.pitch == leakedNote })
+    }
+
+    /** The last bar has no successor to ask, so its own signature is all there is. */
+    @Test
+    fun `a window ending on the last bar still keeps that bar's notes`() {
+        val whole = shortSecondBar()
+
+        val passage = whole.excerpt(fromIndex = 2, bars = 1)
+
+        assertEquals(listOf(leakedNote), passage.notes.map { it.pitch })
+    }
+
     @Test
     fun `a window longer than the piece yields no passages rather than a short one`() {
         assertEquals(emptyList<Score>(), whole.passages(bars = BARS + 1))
@@ -123,6 +149,40 @@ class ExcerptTest {
             alter = Alter.Natural,
             octave = 4 + step / Pitch.LETTERS_PER_OCTAVE,
         )
+
+        val leakedNote = Pitch(Letter.B, Alter.Natural, 4)
+
+        /**
+         * Three bars of 4/4 where the SECOND holds only one quarter — the shape a pickup or a
+         * split bar makes, and the one the nominal-measure arithmetic got wrong.
+         */
+        fun shortSecondBar(): Score {
+            val quarter = Duration(NoteSymbol.Quarter)
+            val starts = listOf(0L, 4 * QUARTER, 5 * QUARTER)
+            return Score(
+                id = ScoreId("short"),
+                title = "Short second bar",
+                composer = null,
+                origin = ScoreOrigin.Parsed("test", "n/a"),
+                staves = listOf(Staff.Upper),
+                measures = starts.mapIndexed { index, start ->
+                    Measure(
+                        index,
+                        Ticks(start),
+                        TimeSignature.FourFour,
+                        KeySignature.C,
+                        mapOf(Staff.Upper to Clef.Treble)
+                    )
+                },
+                events = listOf(
+                    Note(Ticks.ZERO, quarter, Staff.Upper, 1, natural(0)),
+                    Note(Ticks(QUARTER), quarter, Staff.Upper, 1, natural(1)),
+                    Note(Ticks(4 * QUARTER), quarter, Staff.Upper, 1, natural(2)),
+                    Note(Ticks(5 * QUARTER), quarter, Staff.Upper, 1, leakedNote),
+                ),
+                defaultTempoBpm = 80,
+            )
+        }
 
         fun scoreOf(bars: Int): Score {
             val quarter = Duration(NoteSymbol.Quarter)

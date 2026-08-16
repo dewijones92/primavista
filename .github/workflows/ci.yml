@@ -142,6 +142,35 @@ jobs:
           fi
           echo "ok — no INTERNET permission"
 
+      # docs/spec.md I7 says a report from Dewi's phone can settle what happened - and the phone
+      # runs the MINIFIED build, where R8 renames anything reflective. A replay block built from
+      # `this::class.simpleName` reads `claimed=2:a:` in the only build that matters while looking
+      # perfect in debug.
+      #
+      # This checks the SOURCE, not the APK, and that is deliberate. The obvious check - grep the
+      # release DEX for "WrongPitch" - passes either way, because a Kotlin data class bakes its own
+      # name into the `toString()` it generates. That was tried, made to fail on purpose, and did
+      # not fail; a gate that cannot fire is worse than no gate.
+      - name: Assert report names are literals, not reflection (spec I7)
+        run: |
+          set -euo pipefail
+          roots="core app lib"
+          reflective=$(grep -rn --include='*.kt' -E 'val kind:.*::class|kind.*=.*::class' $roots \
+            --exclude-dir=build || true)
+          if [ -n "$reflective" ]; then
+            echo "::error::a report name is derived reflectively, so R8 will rename it on the phone"
+            echo "$reflective"
+            exit 1
+          fi
+          # A check that finds nothing to check must fail rather than pass, so prove the names exist.
+          named=$(grep -rc --include='*.kt' 'override val kind: String' $roots --exclude-dir=build \
+            | awk -F: '{s+=$2} END {print s+0}')
+          if [ "$named" -lt 8 ]; then
+            echo "::error::found only $named named cases - this check was looking at nothing"
+            exit 1
+          fi
+          echo "ok - $named report names are literals"
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:

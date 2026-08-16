@@ -155,7 +155,7 @@ internal class AppJourneyWiring(private val container: AppContainer) : JourneyWi
             "reached=${reading.milestones.size} passed=$everPassed " +
             "streak=${reading.streak.currentDays}d best=${reading.streak.bestDays}d " +
             "days=${reading.streak.daysPractised} input=${reading.input.label} " +
-            "placement=${reading.placement::class.simpleName} refused=${reading.refusals.size}"
+            "placement=${reading.placement.kind} refused=${reading.refusals.size}"
     }
 }
 

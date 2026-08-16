@@ -167,18 +167,7 @@ public class PracticeViewModel(
         viewModelScope.launch {
             if (!opened) {
                 opened = true
-                val stored = wiring.preferences.settings()
-                val granted = wiring.microphoneGranted()
-                val opening = openingInput(stored, granted)
-                diag.event(
-                    TAG,
-                    "opens on input=${opening.mode.name} [stored=${stored.inputLabel ?: "(unchosen)"} " +
-                        "micGranted=$granted revoked=${opening.revoked}]",
-                )
-                _state.value = _state.value.copy(
-                    input = opening.mode,
-                    notice = if (opening.revoked) MIC_REVOKED else null,
-                )
+                _state.value = opening(wiring, diag, _state.value)
             }
             val input = _state.value.input
             val seed = wiring.nowEpochMillis()
@@ -204,6 +193,14 @@ public class PracticeViewModel(
         handledRequest = requestId
         _state.value = _state.value.copy(loading = true, notice = null, result = null)
         viewModelScope.launch {
+            // Resolved here too, and not only in `choose`: opening a piece from the Repertoire tab
+            // is a session starting, so it has to settle what is listening. Without this a saved
+            // PLAY IT preference silently opened on TAP, which is a wrong answer given quietly —
+            // the thing docs/spec.md I3 exists to prevent.
+            if (!opened) {
+                opened = true
+                _state.value = opening(wiring, diag, _state.value)
+            }
             val selection = wiring.open(score)
             diag.event(TAG, "chosen request=$requestId '${score.title}' -> '${selection.score.title}'")
             load(selection, _state.value.input, mayListenFirst = true)
@@ -486,7 +483,7 @@ public class PracticeViewModel(
         )
         diag.event(
             TAG,
-            "loaded '${score.title}' [origin=${score.origin::class.simpleName} " +
+            "loaded '${score.title}' [origin=${score.origin.kind} " +
                 "notes=${score.attackedNotes.size} bars=${score.measures.size} src=${source.label} " +
                 "poly=${source.polyphony} tempo=${conductor.tempoBpm}bpm " +
                 "lat=${source.latency.millis}ms/${source.latency.provenance} targeting=${selection.targeting}]",
@@ -517,13 +514,21 @@ public class PracticeViewModel(
         }
     }
 
+    /**
+     * The cover comes off at the end, in both branches.
+     *
+     * The review page rewinds the playhead to the opening and pins the scroll at zero, so a cover
+     * frozen at the *end* of the piece paints the whole staff — every verdict-coloured notehead the
+     * review page exists to show, gone. `tick()` cannot clear it either, because it stops running
+     * the moment the transport does.
+     */
     private fun finish() {
         conductor?.stop()
         wiring.metronome.stop()
         wiring.tonePlayer.stopAll()
         if (_state.value.previewing) {
             diag.event(TAG, "listen finished at pos=${_state.value.position.value}ticks")
-            _state.value = _state.value.copy(previewing = false, transport = TransportState.Finished)
+            _state.value = _state.value.copy(previewing = false, transport = TransportState.Finished, coverX = null)
             return
         }
         val current = judgeState ?: return
@@ -549,6 +554,7 @@ public class PracticeViewModel(
             result = result,
             lastRun = result,
             notice = null,
+            coverX = null,
         )
     }
 
@@ -821,4 +827,28 @@ private const val PASSAGE_RANGE = "-"
  */
 private fun rememberReplay(record: SessionRecord?, conductor: Conductor) {
     record?.let { LastSession.remember(it.replay(conductor.pauseLegs())) }
+}
+
+/**
+ * What is listening, settled once per session from the stored preference and the permission.
+ *
+ * A free function with two callers rather than a method, because both entry points to a session —
+ * asking the scheduler, and opening a piece from the Repertoire tab — must reach the same answer,
+ * and a second copy of "which input" is exactly the kind of divergence CLAUDE.md's twin laws are
+ * about.
+ */
+private suspend fun opening(
+    wiring: PracticeWiring,
+    diag: Diag,
+    current: PracticeUiState,
+): PracticeUiState {
+    val stored = wiring.preferences.settings()
+    val granted = wiring.microphoneGranted()
+    val opening = openingInput(stored, granted)
+    diag.event(
+        TAG,
+        "opens on input=${opening.mode.name} [stored=${stored.inputLabel ?: "(unchosen)"} " +
+            "micGranted=$granted revoked=${opening.revoked}]",
+    )
+    return current.copy(input = opening.mode, notice = if (opening.revoked) MIC_REVOKED else null)
 }

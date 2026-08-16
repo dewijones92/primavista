@@ -65,12 +65,26 @@ public data class PlacementRecord(
  * statements — the first offers Dewi the read, the second must not pretend he never took it.
  */
 public sealed interface PlacementReading {
-    public data object NeverTaken : PlacementReading
+    /**
+     * A **literal** name for a report, never `this::class.simpleName` — the release build minifies,
+     * so a reflective name reaches Dewi's phone as `a` and "never taken" becomes indistinguishable
+     * from "unreadable", which is the exact distinction this type exists to draw. Abstract, so a
+     * new case cannot be added without naming itself.
+     */
+    public val kind: String
 
-    public data class Taken(val record: PlacementRecord) : PlacementReading
+    public data object NeverTaken : PlacementReading {
+        override val kind: String get() = "NeverTaken"
+    }
+
+    public data class Taken(val record: PlacementRecord) : PlacementReading {
+        override val kind: String get() = "Taken"
+    }
 
     /** The read happened on [takenAtEpochMillis]; what it concluded is what could not be read. */
-    public data class Unreadable(val takenAtEpochMillis: Long, val reason: String) : PlacementReading
+    public data class Unreadable(val takenAtEpochMillis: Long, val reason: String) : PlacementReading {
+        override val kind: String get() = "Unreadable"
+    }
 }
 
 /** The dated history behind the path: which stages have happened, and the placement read. */
