@@ -65,12 +65,13 @@ internal class PartwiseReader(
     private fun readPart(part: Element) {
         var start = Ticks.ZERO
         part.elements("measure").forEachIndexed { index, element ->
-            bar = Measure.numberOf(index)
+            val printed = element.attr("number")?.trim()?.toIntOrNull()
+            bar = printed ?: Measure.numberOf(index)
             cursor = start
             furthest = start
             chordOnset = start
             element.elements().forEach(::readMeasureChild)
-            measures += Measure(index, start, time, key, clefs.toMap())
+            measures += Measure(index, start, time, key, clefs.toMap(), printedNumber = printed)
             start = if (furthest > start) furthest else start + time.measureTicks
         }
     }

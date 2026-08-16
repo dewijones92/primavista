@@ -54,10 +54,12 @@ private class Passages(private val score: Score) {
         // An event that starts inside the window is kept whole, even if it rings past the last
         // barline: clipping it would produce a duration nobody could notate.
         val kept = ordered.subList(firstAtOrAfter(from.value), firstAtOrAfter(until.value))
+        // The title says what is PRINTED, because that is what Dewi reads off the page; the id says
+        // the INDICES, because that is what rebuilds the window. See PassageId.
         val firstBar = window.first().number
         val lastBar = window.last().number
         return score.copy(
-            id = ScoreId("${score.id.value}$SEPARATOR$firstBar$RANGE$lastBar"),
+            id = PassageId.of(score.id, fromIndex, window.size),
             title = "${score.title} (bars $firstBar$EN_DASH$lastBar)",
             measures = window.mapIndexed { index, bar -> bar.copy(index = index, start = bar.start - from) },
             events = kept.map { it.rebased(from, hasTieInto(kept, it)) },
@@ -108,6 +110,4 @@ private fun ScoreEvent.rebased(from: Ticks, tiedFromPrevious: Boolean): ScoreEve
     is Rest -> copy(onset = onset - from)
 }
 
-private const val SEPARATOR = "#"
-private const val RANGE = "-"
 private const val EN_DASH = "–"

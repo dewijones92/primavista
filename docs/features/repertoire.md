@@ -77,6 +77,23 @@ An import is a data change and touches no Kotlin.
   produce must yield a spec that writes complete bars.
 - `StaffRenderProofTest` renders all 44 pieces to PNG on the JVM and asserts none is blank.
 
+## Bar numbers are the printed ones
+
+Sixteen of the forty-one shipped songs open on a pickup written `<measure number="0">`. Counting
+bars from document position labelled every bar of those pieces **one ahead of the engraving**, so a
+passage the app called "bars 5–8" was printed as bars 4–7 — and the bar number is exactly what Dewi
+would use to find the passage in the score in front of him.
+
+`Measure.printedNumber` carries what the source said, and `Measure.number` prefers it. That forced a
+second split, because a passage has two numbers and they are different facts:
+
+- its **title** says the printed bars, because that is what is on the page;
+- its **id** says the indices, because that is what rebuilds the window for a report — and bar 0
+  minus one is not a window.
+
+`PassageId` is the one place that grammar is written, read by `SessionReplay`'s `ScoreRef.Passage`
+rather than re-parsed by hand.
+
 ## Known limits
 
 - Nothing places below **rung 5**. Real piano writing is not beginner material; the generator

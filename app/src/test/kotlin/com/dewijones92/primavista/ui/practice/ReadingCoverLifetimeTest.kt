@@ -32,10 +32,20 @@ class ReadingCoverLifetimeTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
     }
 
+    /**
+     * The session is stopped before Main is released. A view model left running keeps launching on
+     * `viewModelScope`, and the next class's `Dispatchers.setMain` then throws "used concurrently
+     * with setting it" — a failure that lands in whichever class happens to run next, not in the
+     * one that caused it.
+     */
     @After
     fun releaseMain() {
+        started?.pause()
+        started = null
         Dispatchers.resetMain()
     }
+
+    private var started: PracticeViewModel? = null
 
     @Test
     fun `a finished run leaves no cover over the review page`() {
@@ -87,6 +97,7 @@ class ReadingCoverLifetimeTest {
         // One frame is enough for the cover to exist; the run is played out where a test wants it.
         wiring.clock.advanceMillis(FRAME_MILLIS)
         model.tick()
+        started = model
         return Session(model, wiring)
     }
 

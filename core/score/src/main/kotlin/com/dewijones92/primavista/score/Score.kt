@@ -90,8 +90,20 @@ public data class Measure(
     val time: TimeSignature,
     val key: KeySignature,
     val clefs: Map<Staff, Clef>,
+    /**
+     * What is **printed on the page**, when the source said so. Null for music that has no printed
+     * page to disagree with — a generated exercise, or a fixture.
+     *
+     * It exists because position and printed number are different facts and 16 of the 41 shipped
+     * songs prove it: they open `<measure number="0" implicit="yes">`, a pickup, so counting from
+     * document position labels every bar one ahead of the engraving. A passage this app called
+     * "bars 5–8" was printed as bars 4–7, and the bar number is precisely what Dewi would use to
+     * find the passage in the score in front of him.
+     */
+    val printedNumber: Int? = null,
 ) {
-    public val number: Int get() = numberOf(index)
+    /** What to show a human: the printed number when there is one, else this bar's position. */
+    public val number: Int get() = printedNumber ?: numberOf(index)
 
     public companion object {
         public fun numberOf(index: Int): Int = index + 1

@@ -121,7 +121,7 @@ class SessionReplayTest {
     @Test
     fun `a passage replays from its piece and its bars`() {
         val piece = Corpus.pieces.first { whole(it.id).measures.size >= PASSAGE_BARS }
-        val rebuilt = ScoreRef.Passage(piece.id, fromBar = 1, bars = PASSAGE_BARS).rebuild(generator, parser)
+        val rebuilt = ScoreRef.Passage(piece.id, fromIndex = 0, bars = PASSAGE_BARS).rebuild(generator, parser)
 
         assertTrue("$rebuilt", rebuilt is ReplayScore.Rebuilt)
         assertEquals(PASSAGE_BARS, (rebuilt as ReplayScore.Rebuilt).score.measures.size)

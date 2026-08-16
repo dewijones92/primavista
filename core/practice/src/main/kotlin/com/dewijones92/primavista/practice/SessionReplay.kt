@@ -100,8 +100,13 @@ public sealed interface ScoreRef {
 
     public data class Shipped(val piece: ScoreId) : ScoreRef
 
-    /** A window of a shipped piece, 1-based as the bars are printed. See `Score.excerpt`. */
-    public data class Passage(val piece: ScoreId, val fromBar: Int, val bars: Int) : ScoreRef
+    /**
+     * A window of a shipped piece, by **index** rather than by the bar number printed on it.
+     * Sixteen of the shipped songs open on a pickup written `<measure number="0">`, so the two
+     * differ for every bar of those pieces and only the index can rebuild the window. See
+     * [com.dewijones92.primavista.score.PassageId].
+     */
+    public data class Passage(val piece: ScoreId, val fromIndex: Int, val bars: Int) : ScoreRef
 }
 
 /** Why a replay could not rebuild its music. A stated reason, never a silent null. */
@@ -123,7 +128,7 @@ public fun ScoreRef.rebuild(generator: ExerciseGenerator, parser: MusicXmlParser
     is ScoreRef.Shipped -> shippedScore(piece, parser)
     is ScoreRef.Passage -> when (val whole = shippedScore(piece, parser)) {
         is ReplayScore.Lost -> whole
-        is ReplayScore.Rebuilt -> excerptOf(whole.score, fromBar, bars)
+        is ReplayScore.Rebuilt -> excerptOf(whole.score, fromIndex, bars)
     }
 }
 
@@ -136,12 +141,11 @@ private fun shippedScore(id: ScoreId, parser: MusicXmlParser): ReplayScore {
     }
 }
 
-private fun excerptOf(whole: Score, fromBar: Int, bars: Int): ReplayScore {
-    val index = fromBar - 1
-    if (index !in whole.measures.indices) {
-        return ReplayScore.Lost("bar $fromBar is outside the ${whole.measures.size} bars of '${whole.title}'")
+private fun excerptOf(whole: Score, fromIndex: Int, bars: Int): ReplayScore {
+    if (fromIndex !in whole.measures.indices) {
+        return ReplayScore.Lost("bar $fromIndex is outside the ${whole.measures.size} bars of '${whole.title}'")
     }
-    return ReplayScore.Rebuilt(whole.excerpt(index, bars))
+    return ReplayScore.Rebuilt(whole.excerpt(fromIndex, bars))
 }
 
 /** The pauses a replay records, as the immutable mapping the judge needs. */

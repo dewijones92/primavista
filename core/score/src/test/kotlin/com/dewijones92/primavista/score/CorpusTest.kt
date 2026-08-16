@@ -7,6 +7,9 @@ import org.junit.Test
 private const val MIN_IMPORTED_BARS = 8
 private val PASSAGE_LENGTHS = listOf(4, 8, 16)
 
+/** Counted from the shipped `.mxl` files: 16 of the 41 open `<measure number="0">`. */
+private const val EXPECTED_PICKUPS = 16
+
 class CorpusTest {
 
     private val parser = DomMusicXmlParser()
@@ -119,6 +122,34 @@ class CorpusTest {
         assertEquals(emptyList<String>(), leaks)
     }
 
+    /**
+     * Sixteen of the shipped songs open on a pickup the engraving prints as bar 0. Counting from
+     * document position labelled every bar of those pieces one ahead of the page — and the bar
+     * number is what Dewi would use to find a passage in the score in front of him.
+     */
+    @Test
+    fun `the shipped pieces keep the bar numbers their engravings print`() {
+        val opening = Corpus.pieces.associate { it.id.value to scoreOf(it).measures.first().number }
+        val pickups = opening.filterValues { it == 0 }
+
+        assertTrue("no shipped piece opens on a pickup, so this proves nothing", pickups.size >= EXPECTED_PICKUPS)
+        assertEquals(
+            "a piece opens on a bar number that is neither a pickup nor bar one",
+            emptyList<String>(),
+            opening.filterValues { it != 0 && it != 1 }.keys.toList(),
+        )
+    }
+
+    @Test
+    fun `a passage of a pickup piece is titled from the printed bar`() {
+        val piece = Corpus.pieces.first { scoreOf(it).measures.first().number == 0 }
+
+        val passage = scoreOf(piece).excerpt(fromIndex = 0, bars = 4)
+
+        assertTrue(passage.title, passage.title.endsWith("(bars 0–3)"))
+        assertEquals(0, PassageId.read(passage.id)?.fromIndex)
+    }
+
     @Test
     fun `every piece records where it came from and under what licence`() {
         for (piece in Corpus.pieces) {
@@ -145,8 +176,10 @@ class CorpusTest {
         for (piece in Corpus.pieces) {
             val score = scoreOf(piece)
             assertEquals(piece.title, Polyphony.Poly, score.polyphony)
+            // Not `1..size`: sixteen shipped songs open on a pickup printed as bar 0, so the bar
+            // a refusal names has to be one of the score's own printed numbers, not a position.
             val bar = score.firstPolyphonicMeasure()
-            assertTrue("${piece.title} bar $bar", bar != null && bar in 1..score.measures.size)
+            assertTrue("${piece.title} bar $bar", bar != null && bar in score.measures.map { it.number })
         }
     }
 

@@ -110,7 +110,7 @@ public object SessionReplayCodec {
 private fun encodeScore(ref: ScoreRef, spec: SpecText): String = when (ref) {
     is ScoreRef.Generated -> "$GENERATED ${ref.seed} ${spec.encode(ref.spec)}"
     is ScoreRef.Shipped -> "$SHIPPED ${ref.piece.value}"
-    is ScoreRef.Passage -> "$PASSAGE ${ref.fromBar} ${ref.bars} ${ref.piece.value}"
+    is ScoreRef.Passage -> "$PASSAGE ${ref.fromIndex} ${ref.bars} ${ref.piece.value}"
 }
 
 private fun decodeScore(encoded: String, spec: SpecText): ScoreRef {
@@ -124,7 +124,7 @@ private fun decodeScore(encoded: String, spec: SpecText): ScoreRef {
         SHIPPED -> ScoreRef.Shipped(ScoreId(rest))
         PASSAGE -> ScoreRef.Passage(
             piece = ScoreId(rest.split(' ', limit = PASSAGE_PARTS).last()),
-            fromBar = rest.substringBefore(' ').toInt(),
+            fromIndex = rest.substringBefore(' ').toInt(),
             bars = rest.split(' ')[1].toInt(),
         )
         else -> error("'$kind' is not a kind of score this build knows")

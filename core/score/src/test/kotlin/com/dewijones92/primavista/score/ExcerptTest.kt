@@ -32,7 +32,7 @@ class ExcerptTest {
     fun `the title says which bars, and the id is distinct from its parent`() {
         val passage = whole.excerpt(fromIndex = 2, bars = 2)
         assertEquals("Six bars (bars 3–4)", passage.title)
-        assertEquals(ScoreId("test#3-4"), passage.id)
+        assertEquals(PassageId.of(ScoreId("test"), fromIndex = 2, bars = 2), passage.id)
         assertEquals(whole.composer, passage.composer)
         assertEquals(whole.origin, passage.origin)
     }
@@ -80,16 +80,13 @@ class ExcerptTest {
         val tiled = whole.passages(bars = 2)
         assertEquals(3, tiled.size)
         assertEquals(whole.notes.size, tiled.sumOf { it.notes.size })
-        assertEquals(listOf("test#1-2", "test#3-4", "test#5-6"), tiled.map { it.id.value })
+        assertEquals(listOf(0, 2, 4), tiled.map { PassageId.read(it.id)?.fromIndex })
     }
 
     @Test
     fun `an overlapping step is allowed, so a hard bar can be read as an opening and a continuation`() {
         val overlapping = whole.passages(bars = 3, step = 1)
-        assertEquals(
-            listOf("test#1-3", "test#2-4", "test#3-5", "test#4-6"),
-            overlapping.map { it.id.value },
-        )
+        assertEquals(listOf(0, 1, 2, 3), overlapping.map { PassageId.read(it.id)?.fromIndex })
     }
 
     /**

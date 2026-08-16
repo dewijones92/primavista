@@ -36,8 +36,8 @@ import com.dewijones92.primavista.practice.TransportState
 import com.dewijones92.primavista.practice.Verdict
 import com.dewijones92.primavista.score.Midi
 import com.dewijones92.primavista.score.Note
+import com.dewijones92.primavista.score.PassageId
 import com.dewijones92.primavista.score.Score
-import com.dewijones92.primavista.score.ScoreId
 import com.dewijones92.primavista.score.ScoreOrigin
 import com.dewijones92.primavista.score.SkillTag
 import com.dewijones92.primavista.score.Ticks
@@ -804,20 +804,10 @@ private fun remembering(
  */
 private fun scoreRefOf(score: Score): ScoreRef = when (val origin = score.origin) {
     is ScoreOrigin.Generated -> ScoreRef.Generated(origin.seed, origin.spec)
-    is ScoreOrigin.Parsed -> passageRefOf(score.id) ?: ScoreRef.Shipped(score.id)
+    is ScoreOrigin.Parsed -> PassageId.read(score.id)
+        ?.let { ScoreRef.Passage(it.parent, it.fromIndex, it.bars) }
+        ?: ScoreRef.Shipped(score.id)
 }
-
-private fun passageRefOf(id: ScoreId): ScoreRef.Passage? {
-    val piece = id.value.substringBeforeLast(PASSAGE_MARK, missingDelimiterValue = "")
-    if (piece.isEmpty()) return null
-    val bars = id.value.substringAfterLast(PASSAGE_MARK).split(PASSAGE_RANGE)
-    val from = bars.firstOrNull()?.toIntOrNull() ?: return null
-    val last = bars.getOrNull(1)?.toIntOrNull() ?: return null
-    return ScoreRef.Passage(ScoreId(piece), fromBar = from, bars = last - from + 1)
-}
-
-private const val PASSAGE_MARK = "#"
-private const val PASSAGE_RANGE = "-"
 
 /**
  * Puts the run where the diagnostics report can find it (docs/spec.md I7).
