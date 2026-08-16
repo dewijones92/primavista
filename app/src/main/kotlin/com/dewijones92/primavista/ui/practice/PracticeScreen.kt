@@ -358,20 +358,29 @@ private fun ScoreReadout(state: PracticeUiState) {
 }
 
 /**
- * The keyboard covers the piece, not a fixed three octaves.
- *
- * A note the keyboard cannot reach is a note Dewi is guaranteed to be marked `Missed` on, which is
- * the app inventing a fault — and a bass-clef drill sitting below the old floor of C3 did exactly
- * that. Whole octaves so the pattern of black keys still reads as a keyboard, and a floor on the
- * span so a two-note exercise does not produce four enormous keys.
+ * The keyboard covers the piece, centred on it, and no wider than it has to be.
+ * See `.claude/CODE-NOTES.md`.
  */
-private fun keyboardRange(score: Score?): ClosedRange<Int> {
+internal fun keyboardRange(score: Score?): ClosedRange<Int> {
     val sounding = score?.attackedNotes?.map { it.pitch.midi.number }.orEmpty()
     val low = (sounding.minOrNull() ?: KEYBOARD_DEFAULT_LOWEST).floorDiv(SEMITONES) * SEMITONES
     val high = ((sounding.maxOrNull() ?: KEYBOARD_DEFAULT_HIGHEST) / SEMITONES + 1) * SEMITONES - 1
     val short = KEYBOARD_MINIMUM_SEMITONES - (high - low + 1)
-    val padded = if (short > 0) ((short + SEMITONES - 1) / SEMITONES) * SEMITONES else 0
-    return (low - padded).coerceAtLeast(Midi.MIN)..(high).coerceAtMost(Midi.MAX)
+    val octaves = if (short > 0) (short + SEMITONES - 1) / SEMITONES else 0
+    val below = ((octaves + 1) / 2) * SEMITONES
+    val above = (octaves * SEMITONES) - below
+    return shifted(low - below, high + above)
+}
+
+/**
+ * Slides the window back inside MIDI **by whole octaves**, so it still begins on a C.
+ * See `.claude/CODE-NOTES.md`.
+ */
+private fun shifted(low: Int, high: Int): ClosedRange<Int> {
+    val over = ((high - Midi.MAX).coerceAtLeast(0) + SEMITONES - 1) / SEMITONES * SEMITONES
+    val under = ((Midi.MIN - low).coerceAtLeast(0) + SEMITONES - 1) / SEMITONES * SEMITONES
+    val start = (low - over + under).coerceAtLeast(Midi.MIN)
+    return start..high.coerceAtMost(Midi.MAX)
 }
 
 /** The keyboard sits on a felt strip, the way it does inside a piano lid. */
@@ -418,7 +427,7 @@ private const val MUTED_ALPHA = 0.5f
 private const val SEMITONES = 12
 private const val KEYBOARD_DEFAULT_LOWEST = 48
 private const val KEYBOARD_DEFAULT_HIGHEST = 83
-private const val KEYBOARD_MINIMUM_SEMITONES = 36
+private const val KEYBOARD_MINIMUM_SEMITONES = 24
 private const val TRANSPORT_GLOW_SCALE = 0.95f
 
 private val BRASS_GLOW = Color(0x26E8A13C)

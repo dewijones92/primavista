@@ -41,8 +41,8 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 | `:core:database` | 74 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
 | `tools/repertoire` | 20 | — | which pieces ship: the per-composer cap, and that an import removes what it dropped |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
-| `:app` | 133 | 5 | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, the wire between the microphone and the stored latencies, keeping a picked score so it is there tomorrow, and screen logic that does not need a device |
-| **Total** | **803** | **108** | |
+| `:app` | 147 | 5 | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, the wire between the microphone and the stored latencies, keeping a picked score so it is there tomorrow, how wide the tapped keyboard is and where the music sits on it, and screen logic that does not need a device |
+| **Total** | **817** | **108** | |
 
 ## Deliberately uncovered (and why)
 
@@ -58,7 +58,10 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
   dropped rather than silently approximating, and the Repertoire screen shows that count.
 - **The Compose UI itself.** There are no instrumented UI tests. The screens are verified by
   building, installing and looking — which is how the last four real bugs were found, all of them
-  invisible to the suite. That is a stated limitation, not a claim that looking is equivalent: it
+  invisible to the suite, and how a fifth and sixth were found on 2026-08-16 by walking the app from
+  a fresh install: a beginner's five-note drill answered across twenty-one white keys, and a session
+  that opens as *PrimaVista — 0 bpm* before a piece is chosen. Neither could fail a test, because
+  neither function had one; both do now. That is a stated limitation, not a claim that looking is equivalent: it
   catches what is on screen and nothing about what happens when nobody is watching.
 - **The Android XML parser** was covered only by hope until `CorpusOnDeviceTest`. CLAUDE.md names
   the precedent — Totum shipped an RSS bug that passed every JVM test and failed only on a phone —

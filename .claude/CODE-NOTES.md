@@ -3136,3 +3136,59 @@ decision** — height-only, capped at 14dp, where the live one in `PracticeScree
 `min(height, width)` capped at 20dp. Two copies of one decision that already disagreed, which is
 the exact defect CLAUDE.md records having shipped twice. `unbrokenLegs` was an unused convenience
 next to `SessionReplay.Unbroken`, which is what the code actually uses.
+
+## What a walkthrough from a fresh install found (2026-08-16)
+
+Files: `app/.../ui/practice/PracticeScreen.kt` (`keyboardRange`),
+`app/.../ui/practice/PracticeHeader.kt`.
+
+Driven end to end on `primavista-api35` from `pm clear`: onboarding, the placement offer, the path,
+a stage-one drill played to a result. Two defects, both invisible to 803 passing tests because
+neither function had one.
+
+### The keyboard was three octaves wide for a five-note drill
+
+Stage one is "the middle of the treble staff, in long slow notes, nowhere to get lost" — five notes
+inside a fifth. It was being answered on **twenty-one white keys**, about 3.1mm each on a 1080px
+420dpi screen, against Android's ~9mm minimum touch target. Worse, `keyboardRange` padded entirely
+*below* the music, so the notes it actually wanted sat between 64% and 81% of the way along: the
+useful keys were crammed into the right-hand third and the left two-thirds were never touched.
+
+Both halves were already known. The repo's own notes recorded "narrow keys are not cosmetic here: a
+mis-tap is recorded as a wrong note against Dewi", and the bottom-only padding was written down as
+"deliberate (reaching down is the common case) but worth revisiting". What was missing was seeing
+what it looked like.
+
+Two changes. The floor drops from 36 semitones to 24 — the stated reason for a floor was "so a
+two-note exercise does not produce four enormous keys", and two octaves is fourteen keys, which is
+a keyboard rather than four enormous keys. And the padding is now split, odd octave below (reaching
+down really is the common case), so the music lands near the middle. The stage-one drill went from
+21 white keys with the notes at 64–81%, to 14 keys with them at 31–47%. Keys are half again as
+wide; the honest remaining figure is ~4.7mm, still under the platform guideline, and that cannot be
+fixed without hiding notes the exercise uses.
+
+**`shifted` slides by whole octaves, never by the overflow.** The first attempt clamped, and a
+score containing MIDI 127 produced a range starting at 104 — mid-octave, so the black-key pattern
+a hand reads position from was wrong. Sliding in multiples of twelve keeps the start on a C. The
+top octave is still incomplete when the music reaches 127, because MIDI stops at G9 and no range
+containing it can end on a B; reachability wins, per "a small key is hard, a missing key is
+impossible".
+
+### A session opened as "PrimaVista — 0 bpm"
+
+Before the scheduler has chosen, `state.score` is null. The header fell back to the app's own name
+for the title and printed the tempo unconditionally, so the first thing a beginner saw was a piece
+apparently called *PrimaVista* playing at nought beats a minute. It reads as broken rather than as
+loading — and the card below was already saying "Choosing something to read…", so the header was
+contradicting it.
+
+Nought beats a minute is not a tempo, for exactly the reason an unmeasured latency must not read as
+0ms: absence rendered as a value is a claim the app cannot support. `headingFor` and `tempoLabelFor`
+are pure functions over the state so the wording is testable, matching `shelfSummary`,
+`storedSessionsText` and `calibrationPrompt`.
+
+### Deliberately left alone
+
+The note counter shows an em-dash rather than `0` until something has been judged. That looked like
+a placeholder bug and is not: nothing has been read yet, so "0 correct" would be a claim about a
+performance that has not happened. Same principle as the two above, applied correctly already.

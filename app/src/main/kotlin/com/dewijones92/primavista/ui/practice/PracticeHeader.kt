@@ -37,6 +37,18 @@ import androidx.compose.ui.unit.dp
 import com.dewijones92.primavista.practice.Stage
 import com.dewijones92.primavista.theme.TabularNumeral
 
+/**
+ * Before a piece is chosen there is no piece, and the header used to say otherwise: the title fell
+ * back to the app's own name and the tempo printed unconditionally, so a session opened on
+ * *PrimaVista — 0 bpm*, which reads as a broken piece rather than as one being chosen. Nought beats
+ * a minute is not a tempo, for the same reason an unmeasured latency must not read as 0ms.
+ */
+internal fun headingFor(state: PracticeUiState): String = state.score?.title ?: "Getting a piece ready…"
+
+/** Null while there is nothing to be a tempo *of*. */
+internal fun tempoLabelFor(state: PracticeUiState): String? =
+    state.tempoBpm.takeIf { state.score != null && it > 0 }?.let { "$it bpm" }
+
 /** Where you are on the path, what you are reading, why, and how far through it you have got. */
 @Composable
 internal fun PracticeHeader(state: PracticeUiState) {
@@ -48,7 +60,7 @@ internal fun PracticeHeader(state: PracticeUiState) {
         Row {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = state.score?.title ?: "PrimaVista",
+                    text = headingFor(state),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onBackground,
@@ -57,12 +69,10 @@ internal fun PracticeHeader(state: PracticeUiState) {
                 )
                 Reason(state)
             }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = "${state.tempoBpm} bpm",
-                style = TabularNumeral,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            tempoLabelFor(state)?.let {
+                Spacer(Modifier.width(10.dp))
+                Text(text = it, style = TabularNumeral, color = MaterialTheme.colorScheme.primary)
+            }
         }
         Spacer(Modifier.height(8.dp))
         ProgressRail(state)
