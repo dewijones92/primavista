@@ -9,10 +9,10 @@ updated: 2026-08-15
 # Repertoire
 
 Forty-one nineteenth-century songs ship with the app, alongside the three hand-authored
-openings. Schubert (*Gretchen am Spinnrade*, and *Gute Nacht* and *Der Leiermann* from *Winterreise*),
-Berlioz's *Villanelle*, Brahms, Verdi, Fauré, Gounod, Chausson, Mendelssohn, Bizet, Chaminade,
-Coleridge-Taylor, Maria Theresia von Paradis, Pauline Viardot, Louise Reichardt, Marie Jaëll,
-Josephine Lang, Augusta Holmès, Clémence de Grandval, Loïsa Puget. All CC0, from the
+openings. Schubert's *Gretchen am Spinnrade*, Berlioz's *Villanelle*, Haydn, Brahms, Verdi, Fauré, Gounod,
+Chausson, Mendelssohn, Bizet, Chabrier, Butterworth, Chaminade, Amy Beach, Coleridge-Taylor,
+Maria Theresia von Paradis, Pauline Viardot, Louise Reichardt, Marie Jaëll, Josephine Lang, Augusta
+Holmès, Liza Lehmann, Laura Netzel — **40 composers across 41 pieces**. All CC0, from the
 [OpenScore Lieder Corpus](https://github.com/OpenScore/Lieder) at commit `6b2dc542`.
 
 This is the app's stated purpose made real: *read real pieces, in time*.
@@ -93,6 +93,19 @@ second split, because a passage has two numbers and they are different facts:
 
 `PassageId` is the one place that grammar is written, read by `SessionReplay`'s `ScoreRef.Passage`
 rather than re-parsed by hand.
+
+## Why 41 pieces and 40 composers
+
+`Select` fills each rung in turn, preferring composers it has not taken yet and then the piece
+offering more readable passages. The per-composer cap **was not actually enforced** until it was
+tested: the candidates for a pass were filtered once, up front, so a composer with six eligible
+pieces took all six. Three reached the shipped manifest that way and the set held 34 composers.
+
+Enforcing it swapped eight pieces and took the spread to 40. The honest cost is that both
+*Winterreise* songs went — Schubert is now represented by *Gretchen am Spinnrade* alone — and in
+exchange the set gained Chabrier, Butterworth, Haydn's *O tuneful Voice*, Amy Beach's
+*O Mistress Mine*, Liza Lehmann and Laura Netzel. Breadth of idiom is what the cap is for, so that
+is the trade taken deliberately rather than by accident.
 
 ## Known limits
 

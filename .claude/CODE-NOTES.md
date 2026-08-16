@@ -448,7 +448,7 @@ Agents implementing a module append their own `##` section and never rewrite ano
   assertions readable. Testing the actual spaced-repetition curve belongs in `:core:practice`,
   where it lives.
 
-- **The instrumented tests now run.** 50 of them passed on the api35test emulator (API 35) on
+- **The instrumented tests now run.** 50 of them passed on the `api35test` emulator (API 35, renamed `totum-api35` on 2026-08-16) on
   2026-08-08, including the migration pair below. The earlier note here said they had only ever
   been compiled; that is no longer the state.
 
@@ -2958,3 +2958,27 @@ Agents implementing a module append their own `##` section and never rewrite ano
   seek past an entry — skipping one still inflates it — so a bomb in `Pictures/cover.png` is exactly
   as dangerous as one in `score.xml`. The budget therefore counts bytes the reader immediately
   throws away, and there is a test for a bomb hidden in a discarded entry specifically.
+
+## tools/repertoire — the module that decides what ships had no tests
+
+- **A lint fix introduced the bug.** `fillStage` originally checked each candidate against
+  `takenPerComposer` inside the loop, mutating as it went. detekt's `LoopWithTooManyJumpStatements`
+  pushed it to filter the pass's candidates up front — which tests every piece against the counts as
+  they were *before* the pass, so one composer with six eligible pieces took all six against a cap
+  of two. Three composers reached the shipped manifest that way and the set held 34 composers
+  instead of 40. The fix is a **lazy** sequence: each element is tested as it is pulled, after the
+  previous one updated the counts, which satisfies the lint and the invariant at once. Worth
+  remembering that satisfying a static analyser is a code change like any other and can carry a
+  defect in.
+
+- **An import is a statement of what ships, not an addition to it.** `write` did not remove files
+  the new selection dropped, so a re-import left the previous set's `.mxl` files in the resources —
+  shipping in the APK, named by no manifest. Only files the writer produces (`*.mxl`) are removed;
+  anything else in the directory belongs to somebody else. `CorpusTest` now also catches the
+  situation from the app side, so the same fact is guarded at both ends.
+
+- **Rows are built before any byte is written.** The tab/newline `require` used to fire after the
+  scores were already on disk, leaving a half-import behind.
+
+- **The cap was never the binding constraint.** Raising it from 2 to 3 produced a byte-identical
+  selection: `perStage = 8` is what actually limits a rung. Worth knowing before anyone tunes it.

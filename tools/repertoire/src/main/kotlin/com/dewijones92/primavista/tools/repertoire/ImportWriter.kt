@@ -2,6 +2,9 @@ package com.dewijones92.primavista.tools.repertoire
 
 import java.nio.file.Path
 import kotlin.io.path.createDirectories
+import kotlin.io.path.deleteExisting
+import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.name
 import kotlin.io.path.writeBytes
 import kotlin.io.path.writeText
 
@@ -20,11 +23,23 @@ private const val MANIFEST = "lieder/manifest.tsv"
 public class ImportWriter(private val out: Path) {
 
     public fun write(pieces: List<Screening.Accepted>): List<Screening.Accepted> {
-        out.resolve(SCORES_DIR).createDirectories()
-        pieces.forEach { piece ->
-            out.resolve("$SCORES_DIR/${piece.source.id}${LiederCorpus.SUFFIX}").writeBytes(piece.source.bytes)
-        }
+        // Every row is built before a byte is written, so a field that would break the manifest
+        // fails with nothing half-imported rather than after the scores are on disk.
         val rows = pieces.map { row(it) }
+        val scores = out.resolve(SCORES_DIR).also { it.createDirectories() }
+        val keeping = pieces.map { "${it.source.id}${LiederCorpus.SUFFIX}" }.toSet()
+
+        // An import is a statement of what ships, not an addition to it. A piece dropped from the
+        // selection has to go, or its file stays in the resources and ships in the APK named by no
+        // manifest — dead weight nothing can read. Only files this writer produces are removed;
+        // anything else in the directory is somebody's and is left alone.
+        scores.listDirectoryEntries()
+            .filter { it.name.endsWith(LiederCorpus.SUFFIX) && it.name !in keeping }
+            .forEach { it.deleteExisting() }
+
+        pieces.forEach { piece ->
+            scores.resolve("${piece.source.id}${LiederCorpus.SUFFIX}").writeBytes(piece.source.bytes)
+        }
         out.resolve(MANIFEST).writeText((listOf(HEADER) + rows).joinToString("\n", postfix = "\n"))
         return pieces
     }

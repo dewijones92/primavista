@@ -33,13 +33,23 @@ private fun fillStage(
         compareByDescending<Screening.Accepted> { it.placeablePassages }.thenBy { it.source.id },
     )
     val chosen = mutableListOf<Screening.Accepted>()
-    // One pass per composer slot: the first admits one piece each, so breadth comes before depth.
+    // One pass per composer slot, so breadth comes before depth.
+    //
+    // The sequence is lazy on purpose, and that laziness is the whole correctness argument: each
+    // element is tested against `takenPerComposer` as it is pulled, AFTER the previous element
+    // updated it. Materialising the candidates for a pass up front — which an earlier version did,
+    // to satisfy a lint about loop jumps — tested every piece against the counts as they were
+    // BEFORE the pass, so one composer with six pieces took all six against a cap of two. Three
+    // composers reached the shipped manifest that way.
     for (pass in 0 until perComposer) {
-        val room = ordered.filter { it !in chosen && takenPerComposer.getOrDefault(it.source.composer, 0) <= pass }
-        for (piece in room.take(perStage - chosen.size)) {
-            chosen += piece
-            takenPerComposer[piece.source.composer] = pass + 1
-        }
+        val room = perStage - chosen.size
+        ordered.asSequence()
+            .filter { it !in chosen && takenPerComposer.getOrDefault(it.source.composer, 0) <= pass }
+            .take(room)
+            .forEach { piece ->
+                chosen += piece
+                takenPerComposer[piece.source.composer] = pass + 1
+            }
         if (chosen.size >= perStage) break
     }
     return chosen

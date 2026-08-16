@@ -6,9 +6,7 @@ import org.junit.Test
 
 private const val MIN_IMPORTED_BARS = 8
 private val PASSAGE_LENGTHS = listOf(4, 8, 16)
-
-/** Counted from the shipped `.mxl` files: 16 of the 41 open `<measure number="0">`. */
-private const val EXPECTED_PICKUPS = 16
+private val corpusDirectories = listOf("/corpus", "/corpus/lieder")
 
 class CorpusTest {
 
@@ -132,7 +130,10 @@ class CorpusTest {
         val opening = Corpus.pieces.associate { it.id.value to scoreOf(it).measures.first().number }
         val pickups = opening.filterValues { it == 0 }
 
-        assertTrue("no shipped piece opens on a pickup, so this proves nothing", pickups.size >= EXPECTED_PICKUPS)
+        // A lower bound rather than a count: which pieces ship is a curated selection that changes
+        // whenever the import is re-run, but "at least one opens on a pickup" is what stops this
+        // test passing by finding nothing to check.
+        assertTrue("no shipped piece opens on a pickup, so this proves nothing", pickups.isNotEmpty())
         assertEquals(
             "a piece opens on a bar number that is neither a pickup nor bar one",
             emptyList<String>(),
@@ -148,6 +149,23 @@ class CorpusTest {
 
         assertTrue(passage.title, passage.title.endsWith("(bars 0–3)"))
         assertEquals(0, PassageId.read(passage.id)?.fromIndex)
+    }
+
+    /**
+     * The other direction from "every row has a file", which parsing already proves: a file that
+     * ships with **no row naming it** is dead weight in the APK that nothing can ever read, and an
+     * import that half-wrote its manifest would leave exactly that.
+     */
+    @Test
+    fun `no score ships that the manifests do not name`() {
+        val named = Corpus.pieces.map { it.resourcePath.substringAfterLast('/') }.toSet()
+        val shipped = corpusDirectories.flatMap { directory ->
+            val url = requireNotNull(Corpus::class.java.getResource(directory)) { "no $directory in the build" }
+            java.io.File(url.toURI()).listFiles().orEmpty().filter { it.isFile }.map { it.name }
+        }
+
+        assertTrue("no scores found at all, so this proves nothing", shipped.size >= Corpus.pieces.size)
+        assertEquals(emptyList<String>(), shipped.filterNot { it.endsWith(".tsv") || it in named })
     }
 
     @Test
