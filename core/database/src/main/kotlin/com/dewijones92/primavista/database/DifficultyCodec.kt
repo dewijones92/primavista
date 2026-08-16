@@ -65,7 +65,7 @@ public object DifficultyCodec {
         VERSION_FIELD to VERSION.toString(),
         STAVES to spec.staves.joinToString(LIST_SEPARATOR) { it.name },
         CLEFS to encodePerStaff(spec.clefs) { it.name },
-        FIFTHS to spec.key.fifths.toString(),
+        FIFTHS to spec.keys.map { it.fifths }.sorted().joinToString(LIST_SEPARATOR),
         BEATS to spec.time.beats.toString(),
         BEAT_UNIT to spec.time.beatUnit.toString(),
         BARS to spec.bars.toString(),
@@ -103,7 +103,7 @@ public object DifficultyCodec {
         return DifficultySpec(
             staves = staves,
             clefs = clefs,
-            key = KeySignature(fields.int(FIFTHS)),
+            keys = fields.items(FIFTHS) { KeySignature(intOf(it)) }.toSet(),
             time = TimeSignature(fields.int(BEATS), fields.int(BEAT_UNIT)),
             bars = fields.int(BARS),
             range = range,
@@ -116,7 +116,8 @@ public object DifficultyCodec {
             bothHandsActive = fields.bool(BOTH_HANDS),
             // Absent in rows written before the reading ceiling was split from the writing key.
             // Defaulting to the key's own size is exactly what those rows meant.
-            maxKeyAccidentals = fields[MAX_KEY]?.let { intOf(it) } ?: abs(fields.int(FIFTHS)),
+            maxKeyAccidentals = fields[MAX_KEY]?.let { intOf(it) }
+                ?: fields.items(FIFTHS) { abs(intOf(it)) }.max(),
         )
     }
 

@@ -13,7 +13,7 @@ private const val SHARP_KEY_FIFTHS = 2
 internal fun spec(
     bars: Int = 4,
     time: TimeSignature = TimeSignature.FourFour,
-    key: KeySignature = KeySignature.C,
+    keys: Set<KeySignature> = setOf(KeySignature.C),
     symbols: Set<NoteSymbol> = setOf(NoteSymbol.Half, NoteSymbol.Quarter, NoteSymbol.Eighth),
     maxDots: Int = 0,
     allowTuplets: Boolean = false,
@@ -23,7 +23,7 @@ internal fun spec(
 ): DifficultySpec = DifficultySpec(
     staves = listOf(Staff.Upper, Staff.Lower),
     clefs = mapOf(Staff.Upper to Clef.Treble, Staff.Lower to Clef.Bass),
-    key = key,
+    keys = keys,
     time = time,
     bars = bars,
     range = mapOf(
@@ -41,12 +41,12 @@ internal fun spec(
 
 private fun oneStaff(
     time: TimeSignature = TimeSignature.FourFour,
-    key: KeySignature = KeySignature.C,
+    keys: Set<KeySignature> = setOf(KeySignature.C),
     symbols: Set<NoteSymbol>,
 ): DifficultySpec = DifficultySpec(
     staves = listOf(Staff.Upper),
     clefs = mapOf(Staff.Upper to Clef.Treble),
-    key = key,
+    keys = keys,
     time = time,
     bars = 4,
     range = mapOf(Staff.Upper to Midi(60)..Midi(79)),
@@ -76,7 +76,7 @@ internal val drillBases: Map<String, DifficultySpec> = mapOf(
         symbols = setOf(NoteSymbol.Eighth, NoteSymbol.Quarter),
     ),
     "one staff in two sharps" to oneStaff(
-        key = KeySignature(SHARP_KEY_FIFTHS),
+        keys = setOf(KeySignature(SHARP_KEY_FIFTHS)),
         symbols = setOf(NoteSymbol.Quarter, NoteSymbol.Half),
     ),
 )

@@ -159,7 +159,7 @@ private fun describeChoice(choice: PracticeChoice): String = when (choice) {
     is PracticeChoice.Piece ->
         "piece=${choice.id.value} tempo=${choice.tempoBpm}bpm targeting=${choice.targeting}"
     is PracticeChoice.Generated ->
-        "generated seed=${choice.seed} bars=${choice.spec.bars} key=${choice.spec.key.fifths} " +
+        "generated seed=${choice.seed} bars=${choice.spec.bars} keys=${choice.spec.keys.map { it.fifths }} " +
             "tempo=${choice.spec.tempoBpm}bpm staves=${choice.spec.staves.size} targeting=${choice.targeting}"
 }
 

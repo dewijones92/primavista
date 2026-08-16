@@ -1,7 +1,7 @@
 ---
 title: A stage that teaches keys should write in more than one
 kind: todo
-status: planned
+status: done
 priority: medium
 area: score
 updated: 2026-08-15
@@ -41,3 +41,25 @@ a default, as `maxKey` was) and the stage evolutions.
 
 - Stage six writes in more than one key, and claims each one it writes.
 - A report can still replay a generated exercise exactly from its seed and spec.
+
+## Done (2026-08-15)
+
+`DifficultySpec.key` became `keys: Set<KeySignature>`, and stage six writes in G, F, D and B flat.
+It may therefore **claim** all four, which `CurriculumTest` proves by generating from the stage's
+own spec — the invariant that forced the claim to be narrowed in the first place now holds at the
+wider claim.
+
+Two decisions worth keeping:
+
+- **The key is chosen from the seed, not drawn from the generator's random stream.** Consuming a
+  value from `random` would have shifted every note in every exercise ever generated; `keyFor(seed)`
+  leaves a one-key level byte-identical, so only levels that gained keys changed at all.
+- **The stored form did not move for one key.** `fifths=3` encodes exactly as before, so every
+  session already in the practice history still decodes; only a multi-key spec writes a list.
+  Asserted on the text rather than through a round trip, which would have agreed with itself
+  whatever the format became.
+
+`plainestKey` was added for the two places that genuinely need a single key — the staff geometry
+that turns a step into a pitch, and the search for a key that can write a given accidental. The
+plainest is chosen because it is stable: adding a harder key to a level must not move where its
+notes sit on the staff.

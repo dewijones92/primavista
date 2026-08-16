@@ -16,6 +16,9 @@ import org.junit.Test
 private const val NOW_EPOCH_MILLIS = 1_700_000_000_000L
 private const val PROBE_SEEDS = 32L
 
+/** What stage six writes in: G, F, D and B flat. Stated here so the test names the expectation. */
+private val sharpAndFlatFifths = listOf(-2, -1, 1, 2)
+
 class CurriculumTest {
     private val curriculum = Curriculum.Standard
     private val generator = SeededExerciseGenerator()
@@ -95,7 +98,7 @@ class CurriculumTest {
         assertTrue("stage two's quarters survive", NoteSymbol.Quarter in offTheStaff.spec.symbols)
         assertTrue("stage four's second hand survives", offTheStaff.spec.bothHandsActive)
         assertEquals(listOf(Staff.Upper, Staff.Lower), offTheStaff.spec.staves)
-        assertEquals(1, offTheStaff.spec.key.fifths)
+        assertEquals(sharpAndFlatFifths, offTheStaff.spec.keys.map { it.fifths }.sorted())
     }
 
     @Test

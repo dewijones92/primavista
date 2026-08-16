@@ -25,7 +25,7 @@ class DifficultyCodecTest {
 
     @Test
     fun theReadingCeilingRoundTrips() {
-        val spec = sampleSpec().copy(key = KeySignature(1), maxKeyAccidentals = FOUR_ACCIDENTALS)
+        val spec = sampleSpec().copy(keys = setOf(KeySignature(1)), maxKeyAccidentals = FOUR_ACCIDENTALS)
 
         assertEquals(spec, DifficultyCodec.decode(DifficultyCodec.encode(spec)))
     }
@@ -36,8 +36,40 @@ class DifficultyCodecTest {
      * replayable from a report rather than becoming an unreadable origin.
      */
     @Test
+    fun severalKeysRoundTrip() {
+        val spec = sampleSpec().copy(keys = setOf(KeySignature(1), KeySignature(-1), KeySignature(2)))
+
+        assertEquals(spec, DifficultyCodec.decode(DifficultyCodec.encode(spec)))
+    }
+
+    /**
+     * Rows written when a level could only hold one key store a bare `fifths=3`, not a list — and
+     * they still decode because a one-key spec encodes to exactly that. Asserted on the *text*
+     * rather than on a round trip, because a round trip would agree with itself whatever the
+     * format became, and what matters here is that the format did not move.
+     */
+    @Test
+    fun aOneKeySpecStillEncodesAsABareFifthsSoOlderRowsKeepDecoding() {
+        val stored = DifficultyCodec.encode(sampleSpec().copy(keys = setOf(KeySignature(THREE_SHARPS))))
+
+        assertTrue(stored, stored.contains(";fifths=$THREE_SHARPS;"))
+
+        val decoded = DifficultyCodec.decode(stored)
+        assertEquals(setOf(KeySignature(THREE_SHARPS)), decoded?.keys)
+        assertEquals(THREE_SHARPS, decoded?.maxKeyAccidentals)
+    }
+
+    /** A build that predates multi-key specs meets a list it cannot read, and says so. */
+    @Test
+    fun anOlderBuildMeetingSeveralKeysWouldGetAStatedReason() {
+        val stored = DifficultyCodec.encode(sampleSpec().copy(keys = setOf(KeySignature(1), KeySignature(-1))))
+
+        assertTrue(stored, stored.contains("fifths=-1,1"))
+    }
+
+    @Test
     fun aSpecStoredBeforeTheReadingCeilingExistedStillDecodes() {
-        val spec = sampleSpec().copy(key = KeySignature(THREE_SHARPS))
+        val spec = sampleSpec().copy(keys = setOf(KeySignature(THREE_SHARPS)))
         val withoutTheField = DifficultyCodec.encode(spec)
             .split(";")
             .filterNot { it.startsWith("maxKey=") }
@@ -55,7 +87,7 @@ class DifficultyCodecTest {
             staves = listOf(Staff.Upper),
             clefs = mapOf(Staff.Upper to Clef.Bass),
             range = mapOf(Staff.Upper to Midi(36)..Midi(60)),
-            key = KeySignature(7),
+            keys = setOf(KeySignature(7)),
             time = TimeSignature(6, 8),
             symbols = setOf(NoteSymbol.Sixteenth),
             maxDots = 0,

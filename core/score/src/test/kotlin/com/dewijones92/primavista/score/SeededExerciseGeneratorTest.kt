@@ -220,7 +220,7 @@ class SeededExerciseGeneratorTest {
             KeySignature(-3) to Alter.Sharp,
         )
         for ((key, alter) in cases) {
-            val targeted = spec(bars = 8, key = key, allowedAlterations = setOf(alter))
+            val targeted = spec(bars = 8, keys = setOf(key), allowedAlterations = setOf(alter))
             var written = 0
             for (seed in 1L..12L) {
                 val score = generator.generate(seed, targeted)
@@ -247,7 +247,7 @@ class SeededExerciseGeneratorTest {
     @Test
     fun `targeting a key changes the key and the letters written`() {
         val targeted = generator.specTargeting(SkillTag.KeyReading(-3), spec(bars = 8))
-        assertEquals(KeySignature(-3), targeted.key)
+        assertEquals(setOf(KeySignature(-3)), targeted.keys)
         val score = generator.generate(SEED, targeted)
         assertEquals(KeySignature(-3), score.measures.first().key)
         assertTrue(score.notes.any { it.pitch.alter == Alter.Flat })
@@ -301,9 +301,67 @@ class SeededExerciseGeneratorTest {
         val diag = RecordingDiag()
         SeededExerciseGenerator(diag).generate(SEED, spec())
         val line = diag.events.single()
-        for (field in listOf("seed=$SEED", "bars=4", "time=4/4", "key=0fifths", "maxLeap=7semitones", "tempo=80bpm")) {
+        // `keys` is what the level may write in; `wroteIn` is what this seed actually chose, and a
+        // report needs both — the set alone cannot say which page Dewi was looking at.
+        val expected =
+            listOf(
+                "seed=$SEED",
+                "bars=4",
+                "time=4/4",
+                "keys=[0]",
+                "wroteIn=0fifths",
+                "maxLeap=7semitones",
+                "tempo=80bpm"
+            )
+        for (field in expected) {
             assertTrue("expected $field in $line", line.contains(field))
         }
+    }
+
+    /**
+     * A level that writes in several keys must actually use them, or stage six is called *Keys* and
+     * teaches one — which is what `CurriculumTest` refuses to let a stage claim.
+     */
+    @Test
+    fun `a level with several keys writes in all of them across seeds`() {
+        val fourKeys = setOf(KeySignature(1), KeySignature(-1), KeySignature(2), KeySignature(-2))
+        val written = (1L..SPREAD_SEEDS)
+            .map { generator.generate(it, spec(keys = fourKeys)).measures.first().key }
+            .toSet()
+
+        assertEquals(fourKeys, written)
+    }
+
+    /** The seed alone picks the key, so a report carrying the seed and the spec can rebuild it. */
+    @Test
+    fun `the key a seed writes in is the one the spec says it will`() {
+        val fourKeys = setOf(KeySignature(1), KeySignature(-1), KeySignature(2), KeySignature(-2))
+        val target = spec(keys = fourKeys)
+
+        for (seed in 1L..SPREAD_SEEDS) {
+            val score = generator.generate(seed, target)
+            assertEquals("seed $seed", target.keyFor(seed), score.measures.first().key)
+            assertTrue("seed $seed", score.measures.all { it.key == target.keyFor(seed) })
+        }
+    }
+
+    /**
+     * A one-key level chooses that key however the seed falls, which is what keeps every exercise
+     * generated before levels could hold more than one key byte-identical.
+     */
+    @Test
+    fun `a level with one key always writes in it`() {
+        val only = spec(keys = setOf(KeySignature(-4)))
+
+        assertTrue((-SPREAD_SEEDS..SPREAD_SEEDS).all { only.keyFor(it) == KeySignature(-4) })
+    }
+
+    /** A negative seed must not index off the front of the list. */
+    @Test
+    fun `a negative seed still picks a key`() {
+        val fourKeys = setOf(KeySignature(1), KeySignature(-1), KeySignature(2), KeySignature(-2))
+
+        assertTrue((-SPREAD_SEEDS..-1L).all { spec(keys = fourKeys).keyFor(it) in fourKeys })
     }
 
     @Test
@@ -322,5 +380,8 @@ class SeededExerciseGeneratorTest {
 
     private companion object {
         const val SEED = 20260807L
+
+        /** Enough seeds that a four-key level is very unlikely to miss one by chance. */
+        const val SPREAD_SEEDS = 40L
     }
 }

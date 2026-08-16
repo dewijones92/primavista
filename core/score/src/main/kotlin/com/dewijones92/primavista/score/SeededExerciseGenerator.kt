@@ -22,15 +22,18 @@ public class SeededExerciseGenerator(private val diag: Diag = NoOpDiag) : Exerci
         require(bar.isPossible) {
             "note values ${spec.symbols} cannot fill a ${spec.time.beats}/${spec.time.beatUnit} bar exactly"
         }
-        val random = Random(seed)
-        val events = spec.staves.flatMapIndexed { position, staff -> staffEvents(spec, staff, position, bar, random) }
+        // The key is chosen from the seed rather than drawn from `random`, so a single-key spec
+        // produces byte-identical music to before a level could write in more than one.
+        val writing = Writing(spec, bar, Random(seed), spec.keyFor(seed))
+        val key = writing.key
+        val events = spec.staves.flatMapIndexed { position, staff -> staffEvents(writing, staff, position) }
         val score = Score(
-            id = ScoreId(identifierOf(seed, spec)),
+            id = ScoreId(identifierOf(seed, spec, key)),
             title = "Generated exercise",
             composer = null,
             origin = ScoreOrigin.Generated(seed, spec),
             staves = spec.staves,
-            measures = measuresOf(spec),
+            measures = measuresOf(spec, key),
             events = events.sortedWith(scoreEventOrder),
             defaultTempoBpm = spec.tempoBpm,
         )
@@ -48,7 +51,7 @@ public class SeededExerciseGenerator(private val diag: Diag = NoOpDiag) : Exerci
             is SkillTag.LegerLines -> base.withLegerLines(target.clef, target.count, target.above)
             is SkillTag.Accidental -> base.withAccidental(target.alter)
             is SkillTag.KeyReading -> base.copy(
-                key = KeySignature(target.fifths),
+                keys = setOf(KeySignature(target.fifths)),
                 maxKeyAccidentals = maxOf(base.maxKeyAccidentals, kotlin.math.abs(target.fifths)),
             )
             is SkillTag.RhythmFigure -> base.withRhythmFigure(target)
@@ -61,38 +64,43 @@ public class SeededExerciseGenerator(private val diag: Diag = NoOpDiag) : Exerci
 
     /** The one line a report needs to reconstruct an exercise exactly (docs/spec.md I7). */
     private fun describe(seed: Long, spec: DifficultySpec): String =
-        "seed=$seed bars=${spec.bars} time=${spec.time.beats}/${spec.time.beatUnit} key=${spec.key.fifths}fifths " +
+        "seed=$seed bars=${spec.bars} time=${spec.time.beats}/${spec.time.beatUnit} " +
+            "keys=${spec.keys.map { it.fifths }} wroteIn=${spec.keyFor(seed).fifths}fifths " +
             "staves=${spec.staves} clefs=${spec.clefs} range=${spec.range} symbols=${spec.symbols} " +
             "maxDots=${spec.maxDots} tuplets=${spec.allowTuplets} alterations=${spec.allowedAlterations} " +
             "maxLeap=${spec.maxLeapSemitones}semitones tempo=${spec.tempoBpm}bpm bothHands=${spec.bothHandsActive}"
 
-    private fun staffEvents(
-        spec: DifficultySpec,
-        staff: Staff,
-        position: Int,
-        bar: BarFill,
-        random: Random,
-    ): List<ScoreEvent> {
+    /** One exercise being written: everything fixed for its whole length, gathered once. */
+    private class Writing(
+        val spec: DifficultySpec,
+        val bar: BarFill,
+        val random: Random,
+        val key: KeySignature,
+    )
+
+    private fun staffEvents(writing: Writing, staff: Staff, position: Int): List<ScoreEvent> {
+        val spec = writing.spec
+        val key = writing.key
         val voice = position + 1
         val measureTicks = spec.time.measureTicks
         if (position > 0 && !spec.bothHandsActive) {
             return (0 until spec.bars).flatMap { index ->
-                laidOut(bar.fillWithLongest(), measureTicks * index) { onset, duration ->
+                laidOut(writing.bar.fillWithLongest(), measureTicks * index) { onset, duration ->
                     Rest(onset, duration, staff, voice)
                 }
             }
         }
         val range = requireNotNull(spec.range[staff]) { "spec has no pitch range for $staff" }
         val walker = MelodyWalker(
-            ladder = scaleLadder(spec.key, range),
-            extras = extraAlterations(spec),
+            ladder = scaleLadder(key, range),
+            extras = extraAlterations(spec, key),
             maxLeapSemitones = spec.maxLeapSemitones,
             range = range,
-            keyPitchClasses = keyPitchClasses(spec.key),
-            random = random,
+            keyPitchClasses = keyPitchClasses(key),
+            random = writing.random,
         )
         return (0 until spec.bars).flatMap { index ->
-            laidOut(bar.fillRandomly(random), measureTicks * index) { onset, duration ->
+            laidOut(writing.bar.fillRandomly(writing.random), measureTicks * index) { onset, duration ->
                 Note(onset, duration, staff, voice, walker.next())
             }
         }
@@ -111,16 +119,16 @@ public class SeededExerciseGenerator(private val diag: Diag = NoOpDiag) : Exerci
         }
     }
 
-    private fun measuresOf(spec: DifficultySpec): List<Measure> =
+    private fun measuresOf(spec: DifficultySpec, key: KeySignature): List<Measure> =
         (0 until spec.bars).map { index ->
-            Measure(index, spec.time.measureTicks * index, spec.time, spec.key, spec.clefs)
+            Measure(index, spec.time.measureTicks * index, spec.time, key, spec.clefs)
         }
 
-    private fun extraAlterations(spec: DifficultySpec): List<Alter> =
+    private fun extraAlterations(spec: DifficultySpec, key: KeySignature): List<Alter> =
         spec.allowedAlterations
-            .filter { it != Alter.Natural || spec.key.fifths != 0 }
+            .filter { it != Alter.Natural || key.fifths != 0 }
             .sortedBy { it.semitones }
 
-    private fun identifierOf(seed: Long, spec: DifficultySpec): String =
-        "generated-$seed-${spec.bars}bars-${spec.time.beats}-${spec.time.beatUnit}-key${spec.key.fifths}"
+    private fun identifierOf(seed: Long, spec: DifficultySpec, key: KeySignature): String =
+        "generated-$seed-${spec.bars}bars-${spec.time.beats}-${spec.time.beatUnit}-key${key.fifths}"
 }

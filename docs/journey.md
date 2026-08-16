@@ -45,7 +45,7 @@ schedulers and a design failure.
 | 3 | The other clef | Bass clef, same treatment |
 | 4 | Both hands | The grand staff — two staves at once |
 | 5 | Sharps and flats | Written accidentals |
-| 6 | Keys | Key signatures, where the accidental is implied rather than printed. Writes in G; reads up to two accidentals |
+| 6 | Keys | Key signatures, where the accidental is implied rather than printed. Writes in G, F, D and B flat; reads up to two accidentals |
 | 7 | Off the staff | Leger lines, above and below, both clefs |
 | 8 | Quicker | Eighths, sixteenths, dots, ties |
 | 9 | Real music | The corpus, at tempo — in the keys real music is written in, up to four accidentals |

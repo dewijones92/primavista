@@ -28,6 +28,14 @@ private const val TRIPLET = 3
 
 /** How large a key signature each rung can READ, which is not the key it writes in. */
 private const val TWO_ACCIDENTALS = 2
+
+/** G, F, D and B flat: the four keys nearest home, two sharpwards and two flatwards. */
+private val sharpAndFlatKeys = setOf(
+    KeySignature(1),
+    KeySignature(-1),
+    KeySignature(TWO_ACCIDENTALS),
+    KeySignature(-TWO_ACCIDENTALS),
+)
 private const val FOUR_ACCIDENTALS = 4
 
 private val trebleStaff = staffMidiRange(Clef.Treble, KeySignature.C, WHOLE_STAFF_STEPS)
@@ -41,7 +49,7 @@ private val grandStaffClefs = mapOf(Staff.Upper to Clef.Treble, Staff.Lower to C
 private val firstRung = DifficultySpec(
     staves = listOf(Staff.Upper),
     clefs = mapOf(Staff.Upper to Clef.Treble),
-    key = KeySignature.C,
+    keys = setOf(KeySignature.C),
     time = TimeSignature.FourFour,
     bars = OPENING_BARS,
     range = mapOf(Staff.Upper to staffMidiRange(Clef.Treble, KeySignature.C, bandSteps(PitchBand.MiddleStaff))),
@@ -130,12 +138,17 @@ private val drafts = listOf(
     StageDraft(
         title = "Keys",
         blurb = "Sharps and flats at the front of the line, implied on every note they name.",
-        // Only the key it writes in is *claimed*: a stage's claims are what its own material
-        // tests, and `maxKeyAccidentals` is a separate dial saying what it can READ.
-        skills = setOf(SkillTag.KeyReading(fifths = 1)),
+        skills = setOf(
+            SkillTag.KeyReading(fifths = 1),
+            SkillTag.KeyReading(fifths = -1),
+            SkillTag.KeyReading(fifths = TWO_ACCIDENTALS),
+            SkillTag.KeyReading(fifths = -TWO_ACCIDENTALS),
+        ),
         evolve = {
             it.copy(
-                key = KeySignature(fifths = 1),
+                // It writes in all four, so it may claim all four: a stage's claims are exactly
+                // what its own material tests, and CurriculumTest holds that line.
+                keys = sharpAndFlatKeys,
                 maxKeyAccidentals = TWO_ACCIDENTALS,
                 tempoBpm = KEYS_TEMPO_BPM,
             )

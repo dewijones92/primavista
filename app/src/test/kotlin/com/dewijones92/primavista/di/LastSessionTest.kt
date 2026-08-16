@@ -84,7 +84,7 @@ class LastSessionTest {
     private fun difficulty() = DifficultySpec(
         staves = listOf(Staff.Upper),
         clefs = mapOf(Staff.Upper to Clef.Treble),
-        key = KeySignature(1),
+        keys = setOf(KeySignature(1)),
         time = TimeSignature.FourFour,
         bars = 4,
         range = mapOf(Staff.Upper to Midi(MIDDLE_C)..Midi(79)),

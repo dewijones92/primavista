@@ -133,7 +133,7 @@ public class SpacedPracticeScheduler(
         public val DefaultBase: DifficultySpec = DifficultySpec(
             staves = listOf(Staff.Upper),
             clefs = mapOf(Staff.Upper to Clef.Treble),
-            key = KeySignature.C,
+            keys = setOf(KeySignature.C),
             time = TimeSignature.FourFour,
             bars = EXERCISE_BARS,
             range = mapOf(Staff.Upper to staffMidiRange(Clef.Treble, KeySignature.C, WHOLE_STAFF_STEPS)),

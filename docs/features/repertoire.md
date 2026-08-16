@@ -81,7 +81,4 @@ An import is a data change and touches no Kotlin.
 
 - Nothing places below **rung 5**. Real piano writing is not beginner material; the generator
   covers the lower rungs, which is what it is for.
-- A stage still **writes in one key** even though it can now read several, so flats are met
-  through repertoire and targeted drills rather than through a stage's own material. See
-  `../todos/generate-in-more-than-one-key.md`.
 - Parsing the corpus costs real time on first use. See `../todos/repertoire-load-cost.md`.

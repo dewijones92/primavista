@@ -13,7 +13,7 @@ import com.dewijones92.primavista.score.TimeSignature
 internal fun sampleSpec(): DifficultySpec = DifficultySpec(
     staves = listOf(Staff.Upper, Staff.Lower),
     clefs = mapOf(Staff.Upper to Clef.Treble, Staff.Lower to Clef.Bass),
-    key = KeySignature(-3),
+    keys = setOf(KeySignature(-3)),
     time = TimeSignature(3, 4),
     bars = 8,
     range = mapOf(

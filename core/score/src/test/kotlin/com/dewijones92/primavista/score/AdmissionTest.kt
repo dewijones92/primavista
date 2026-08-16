@@ -25,7 +25,7 @@ class AdmissionTest {
     fun `every exercise a spec generates is admitted by that spec`() {
         val specs = mapOf(
             "grand staff" to spec(),
-            "one sharp" to spec(key = KeySignature(1)),
+            "one sharp" to spec(keys = setOf(KeySignature(1))),
             "dotted" to spec(maxDots = 1),
             "hands separate" to spec(bothHandsActive = false),
             "three four" to spec(time = TimeSignature(3, 4)),
@@ -64,7 +64,7 @@ class AdmissionTest {
     /** In G major an F sharp is the key signature doing its job, not something extra to read. */
     @Test
     fun `a note the key signature implies is not an accidental`() {
-        val naturalsOnly = spec(key = KeySignature(1), allowedAlterations = setOf(Alter.Natural))
+        val naturalsOnly = spec(keys = setOf(KeySignature(1)), allowedAlterations = setOf(Alter.Natural))
         val inG = scoreOf(Pitch(Letter.F, Alter.Sharp, 5), Pitch(Letter.G, Alter.Natural, 5))
             .let { score -> score.copy(measures = score.measures.map { it.copy(key = KeySignature(1)) }) }
         assertTrue(naturalsOnly.admits(inG).isAdmitted)
@@ -76,7 +76,7 @@ class AdmissionTest {
      */
     @Test
     fun `a level reads up to its ceiling, not up to the key it writes in`() {
-        val writesInG = spec(key = KeySignature(1)).copy(maxKeyAccidentals = FOUR_ACCIDENTALS)
+        val writesInG = spec(keys = setOf(KeySignature(1))).copy(maxKeyAccidentals = FOUR_ACCIDENTALS)
         assertTrue(writesInG.admits(inKey(KeySignature(-FOUR_ACCIDENTALS))).isAdmitted)
         assertFalse(writesInG.admits(inKey(KeySignature(FIVE_ACCIDENTALS))).isAdmitted)
     }
@@ -84,7 +84,7 @@ class AdmissionTest {
     /** `copy(key = …)` does not re-evaluate defaults, so the floor has to be derived, not required. */
     @Test
     fun `a level can always read the key it writes in, even after a copy`() {
-        val copied = spec(key = KeySignature.C).copy(key = KeySignature(FIVE_ACCIDENTALS))
+        val copied = spec(keys = setOf(KeySignature.C)).copy(keys = setOf(KeySignature(FIVE_ACCIDENTALS)))
         assertEquals(0, copied.maxKeyAccidentals)
         assertEquals(FIVE_ACCIDENTALS, copied.readableKeyAccidentals)
         assertTrue(copied.admits(inKey(KeySignature(FIVE_ACCIDENTALS))).isAdmitted)
@@ -92,7 +92,7 @@ class AdmissionTest {
 
     @Test
     fun `a signature is judged on how many accidentals it carries, not which ones`() {
-        val twoSharps = spec(key = KeySignature(TWO_SHARPS))
+        val twoSharps = spec(keys = setOf(KeySignature(TWO_SHARPS)))
         assertTrue(
             "two flats is the same size as two sharps",
             twoSharps.admits(inKey(KeySignature(-TWO_SHARPS))).isAdmitted

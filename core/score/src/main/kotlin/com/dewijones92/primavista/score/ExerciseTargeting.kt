@@ -42,9 +42,9 @@ internal fun DifficultySpec.withRhythmFigure(figure: SkillTag.RhythmFigure): Dif
 
 internal fun DifficultySpec.withAccidental(alter: Alter): DifficultySpec {
     val allowed = allowedAlterations + alter
-    if (alter.isWritableIn(key)) return copy(allowedAlterations = allowed)
+    if (alter.isWritableIn(plainestKey)) return copy(allowedAlterations = allowed)
     val moved = nearestKeyWriting(alter) ?: return copy(allowedAlterations = allowed)
-    return copy(allowedAlterations = allowed, key = moved)
+    return copy(allowedAlterations = allowed, keys = setOf(moved))
 }
 
 internal fun DifficultySpec.withLeap(semitones: Int): DifficultySpec {
@@ -70,7 +70,7 @@ internal fun DifficultySpec.withBothHands(): DifficultySpec {
     return copy(
         staves = staves + missing,
         clefs = clefs + (missing to clef),
-        range = range + (missing to midiRangeOf(clef, key, 0..StaffGeometry.TOP_STEP)),
+        range = range + (missing to midiRangeOf(clef, plainestKey, 0..StaffGeometry.TOP_STEP)),
         bothHandsActive = true,
     )
 }
@@ -88,7 +88,7 @@ private fun DifficultySpec.withStaffRange(clef: Clef, steps: IntRange): Difficul
     val staff = staffFor(clef)
     return copy(
         clefs = clefs + (staff to clef),
-        range = range + (staff to midiRangeOf(clef, key, steps)),
+        range = range + (staff to midiRangeOf(clef, plainestKey, steps)),
     )
 }
 
@@ -144,7 +144,7 @@ private fun Alter.isWritableIn(key: KeySignature): Boolean {
 
 private fun DifficultySpec.nearestKeyWriting(alter: Alter): KeySignature? =
     (-KeySignature.MAX_FIFTHS..KeySignature.MAX_FIFTHS)
-        .sortedWith(compareBy({ abs(it - key.fifths) }, { it }))
+        .sortedWith(compareBy({ abs(it - plainestKey.fifths) }, { it }))
         .map { KeySignature(it) }
         .firstOrNull { alter.isWritableIn(it) }
 

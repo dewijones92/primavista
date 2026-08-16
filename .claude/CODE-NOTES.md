@@ -2876,3 +2876,33 @@ Agents implementing a module append their own `##` section and never rewrite ano
   the picker, but the race predates it and applied equally to the Repertoire tab's own button. One
   effect decides now, and a pending request wins. Nothing in the JVM suite could see this: both
   paths were individually correct.
+
+## core/score/.../Exercise.kt — a level writes in a SET of keys
+
+- **Why it is a set and not a key.** `CurriculumTest` holds that a stage may only claim skills its
+  own material actually tests. With one key, stage six — called *Keys* — could claim exactly
+  `KeyReading(1)`, so a rung named after key signatures taught one signature. The set is what lets
+  the claim be honest, and the test is what proves it rather than the doc asserting it.
+
+- **`keyFor(seed)` deliberately does not touch the generator's random stream.** Drawing the key from
+  `random` would have shifted every subsequent value, changing every note of every exercise ever
+  generated from every seed — including the ones a diagnostics report might be asked to replay. A
+  seed-derived index leaves a one-key level **byte-identical**, so only a level that gained keys
+  produced anything new. The modulo is written `((seed % n) + n) % n` because a negative seed must
+  not index off the front.
+
+- **`plainestKey` exists for the two places that genuinely need one key**: `midiRangeOf`, where the
+  key decides which pitch a staff step maps to, and `nearestKeyWriting`, which searches outward for
+  a key that can spell a given accidental. The *plainest* is chosen because it is stable — adding a
+  harder key to a level must not move where its notes sit on the staff.
+
+- **The stored form did not move for a single key.** `fifths=3` encodes exactly as before, so every
+  session already in the practice history still decodes and `DifficultyCodec.VERSION` stays at 1;
+  only a multi-key spec writes `fifths=-1,1`. An older build meeting that list gets an
+  `Unreadable` with a reason, which is the designed behaviour rather than a silent misread. The
+  test asserts the **text**, because a round trip would have agreed with itself whatever the format
+  became.
+
+- **The generator's per-exercise state is bundled as `Writing`.** Threading the chosen key through
+  took `staffEvents` to seven parameters; the spec, the bar filler, the random source and the key
+  are all fixed for the whole exercise, so they travel together and the per-staff call takes three.
