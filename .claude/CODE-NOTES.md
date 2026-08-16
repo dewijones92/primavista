@@ -2938,3 +2938,23 @@ Agents implementing a module append their own `##` section and never rewrite ano
   no test drove (leaving the Repertoire tab mid-parse duplicated all 44 rows, and duplicate keys in
   a `LazyColumn` are a crash, not a repeat); and a **build variant** no test runs in (R8). All three
   are "the code is right in the case anyone thought to write down".
+
+## core/score/.../MxlContainer.kt — the picker changed who writes the input
+
+- **The old reader was correct until the file picker shipped.** Every `.mxl` in the app was written
+  by `tools/repertoire`, so calling `readBytes()` on each zip entry was reading our own output. The
+  moment Dewi can pick a file, the same code path takes an arbitrary archive, and a forty-kilobyte
+  one can inflate to gigabytes — on a phone that is an OOM kill, not an error message. The lesson is
+  about *provenance changing under a function that did not change*: nothing about the parser was
+  edited when it became a public entry point.
+
+- **The caps are measured, not guessed.** Across the 41 shipped songs: largest 1.5MB uncompressed,
+  at most 2 entries, worst ratio 46:1. 32MB and 64 entries are roughly twenty times the largest
+  thing that has ever come through, so a much longer piece than anything shipped still opens.
+  `MxlContainerTest` asserts every shipped file sits under *half* the cap, because a cap no real
+  file could approach is a cap nobody has checked.
+
+- **Discarded entries still cost the budget, and that is the interesting half.** A zip stream cannot
+  seek past an entry — skipping one still inflates it — so a bomb in `Pictures/cover.png` is exactly
+  as dangerous as one in `score.xml`. The budget therefore counts bytes the reader immediately
+  throws away, and there is a test for a bomb hidden in a discarded entry specifically.

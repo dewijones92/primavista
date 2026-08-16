@@ -3,16 +3,10 @@ package com.dewijones92.primavista.score
 import com.dewijones92.primavista.common.Diag
 import com.dewijones92.primavista.common.NoOpDiag
 import org.w3c.dom.Element
-import java.io.ByteArrayInputStream
-import java.util.zip.ZipInputStream
 
 private const val ROOT_ELEMENT = "score-partwise"
-private const val CONTAINER_PATH = "META-INF/container.xml"
-private const val METADATA_PREFIX = "META-INF"
 private const val DIAG_TAG = "musicxml"
 private const val DROPPED_IN_SUMMARY = 5
-
-private val musicXmlSuffixes = listOf(".musicxml", ".xml")
 
 /**
  * The hardened DOM reader for this app's MusicXML subset.
@@ -42,8 +36,9 @@ public class DomMusicXmlParser(private val diag: Diag = NoOpDiag) : MusicXmlPars
         licence: String,
         part: PartChoice,
     ): MusicXmlResult {
-        val entries = runCatching { zipEntriesOf(bytes) }.getOrElse { failure ->
-            return failed(sourceName, "unreadable .mxl container: ${failure.message ?: failure::class.simpleName}")
+        val entries = when (val reading = MxlContainer.read(bytes)) {
+            is MxlReading.Refused -> return failed(sourceName, reading.reason)
+            is MxlReading.Read -> reading.entries
         }
         val root = rootFileOf(entries)
             ?: return failed(sourceName, "no MusicXML root file inside the .mxl container")
@@ -68,17 +63,6 @@ public class DomMusicXmlParser(private val diag: Diag = NoOpDiag) : MusicXmlPars
                 parsed.dropped.take(DROPPED_IN_SUMMARY).joinToString("; ", prefix = "[", postfix = "]"),
         )
         return parsed
-    }
-
-    private fun zipEntriesOf(bytes: ByteArray): Map<String, ByteArray> {
-        val entries = LinkedHashMap<String, ByteArray>()
-        ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
-            while (true) {
-                val entry = zip.nextEntry ?: break
-                if (!entry.isDirectory) entries[entry.name] = zip.readBytes()
-            }
-        }
-        return entries
     }
 
     private fun rootFileOf(entries: Map<String, ByteArray>): ByteArray? {

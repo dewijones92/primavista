@@ -33,7 +33,7 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 
 | Module | JVM tests | Instrumented | Holds |
 |---|---|---|---|
-| `:core:score` | 157 | — | the model, the MusicXML subset, the generator's determinism, `Score.polyphony` (spec I3's predicate), part selection, passages, and whether a spec admits a piece |
+| `:core:score` | 165 | — | the model, the MusicXML subset, the generator's determinism, `Score.polyphony` (spec I3's predicate), part selection, passages, and whether a spec admits a piece |
 | `:core:audio` | 88 | 22 | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM; the AudioTrack and AudioRecord bridges on a device |
 | `:core:notation` | 79 | — | staff geometry for both clefs, stems from font anchors, beams, leger lines, `xOf` agreeing with note placement (spec I1) |
 | `:core:practice` | 139 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5), what a piece offers to read, how far ahead the page is covered, and re-judging a session from its own report (spec I7) |
@@ -41,7 +41,7 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 | `:core:database` | 74 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
 | `:app` | 105 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, and screen logic that does not need a device |
-| **Total** | **714** | **99** | |
+| **Total** | **722** | **99** | |
 
 ## Deliberately uncovered (and why)
 
