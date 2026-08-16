@@ -63,7 +63,7 @@ An import is a data change and touches no Kotlin.
 - `Score.passages` / `Score.excerpt` (`:core:score`) — a passage of a Score is a Score.
 - `DifficultySpec.admits` (`:core:score`) — is this music at this level.
 - `Repertoire` (`:core:practice`) — what a piece offers, and which passage to open.
-- `ShippedRepertoire` (`:app`) — parses and windows once for the whole app, publishing as it
+- `AppRepertoire` (`:app`) — parses and windows once for the whole app, publishing as it
   lands.
 
 ## Held by

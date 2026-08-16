@@ -11,6 +11,7 @@ import com.dewijones92.primavista.score.Dropped
 import com.dewijones92.primavista.score.MusicXmlParser
 import com.dewijones92.primavista.score.MusicXmlResult
 import com.dewijones92.primavista.score.Score
+import com.dewijones92.primavista.score.ScoreLibrary
 import com.dewijones92.primavista.score.material
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -27,7 +28,7 @@ import kotlinx.coroutines.withContext
 private const val TAG = "repertoire"
 
 /**
- * One shipped piece, how it read, and what it offers to read.
+ * One piece, how it read, and what it offers to read.
  *
  * [passages] is on the parse rather than looked up later so that a piece is *finished* the moment
  * its own coroutine ends — which is what lets the Repertoire tab show a card as soon as it exists
@@ -35,6 +36,7 @@ private const val TAG = "repertoire"
  */
 public data class PieceParse(
     val piece: CorpusPiece,
+    val library: String = Corpus.label,
     val result: MusicXmlResult,
     val passages: List<Score> = emptyList(),
 ) {
@@ -49,7 +51,7 @@ public data class PieceParse(
 }
 
 /**
- * What there is to read: the shipped pieces parsed, and windowed into the passages the path can
+ * What there is to read: every library's pieces parsed, and windowed into the passages the path can
  * place.
  *
  * **One owner, because it is expensive.** Until this existed the Repertoire tab and the scheduler
@@ -61,10 +63,11 @@ public data class PieceParse(
  * screen can show what has arrived rather than waiting on the last file. See
  * `.claude/CODE-NOTES.md` for the measurements and what is still owed.
  */
-public class ShippedRepertoire(
+public class AppRepertoire(
     private val parser: MusicXmlParser,
     private val diag: Diag,
     curriculum: Curriculum,
+    private val libraries: List<ScoreLibrary> = listOf(Corpus),
 ) {
     private val repertoire = Repertoire(curriculum)
     private val lock = Mutex()
@@ -75,9 +78,15 @@ public class ShippedRepertoire(
     public val parsed: StateFlow<List<PieceParse>> = arriving.asStateFlow()
 
     /** How many there are to read, so a screen can size its waiting state honestly. */
-    public val expected: Int get() = Corpus.pieces.size
+    public val expected: Int get() = libraries.sumOf { it.pieces().size }
 
-    /** Every shipped piece and how it read, failures included — a dead piece is still a row. */
+    /** Re-reads every library, so a score kept since the last read is offered. */
+    public suspend fun reload(): List<PieceParse> = lock.withLock {
+        complete = null
+        withContext(Dispatchers.Default) { read() }.also { complete = it }
+    }
+
+    /** Every piece and how it read, failures included — a dead piece is still a row. */
     public suspend fun load(): List<PieceParse> = lock.withLock {
         complete ?: withContext(Dispatchers.Default) { read() }.also { complete = it }
     }
@@ -100,7 +109,10 @@ public class ShippedRepertoire(
         // rows are keyed by piece id in a LazyColumn, where a duplicate key is a crash rather than
         // a repeat, with `expected - arrived` going negative right behind it.
         arriving.value = emptyList()
-        val parses = Corpus.pieces.map { piece -> async { readOne(piece).also(::landed) } }.awaitAll()
+        val parses = libraries
+            .flatMap { library -> library.pieces().map { library to it } }
+            .map { (library, piece) -> async { readOne(library, piece).also(::landed) } }
+            .awaitAll()
         diag.event(
             TAG,
             "read ${parses.size} pieces, ${parses.count { it.failure != null }} failed; " +
@@ -110,10 +122,13 @@ public class ShippedRepertoire(
         parses
     }
 
-    private fun readOne(piece: CorpusPiece): PieceParse {
-        val result = runCatching { Corpus.parse(piece, parser) }
-            .getOrElse { MusicXmlResult.Failed(it.message ?: it.toString()) }
-        val parse = PieceParse(piece, result)
+    private fun readOne(library: ScoreLibrary, piece: CorpusPiece): PieceParse {
+        val result = runCatching {
+            library.bytesOf(piece)
+                ?.let { Corpus.parse(piece, parser, it) }
+                ?: MusicXmlResult.Failed("its file is missing from the ${library.label} library")
+        }.getOrElse { MusicXmlResult.Failed(it.message ?: it.toString()) }
+        val parse = PieceParse(piece, library.label, result)
         report(parse)
         return parse.copy(passages = parse.score?.let { repertoire.offers(it) }.orEmpty())
     }

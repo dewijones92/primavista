@@ -20,9 +20,9 @@ import org.junit.Test
  * ordinary thing to do, since the read takes seconds on a phone.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class ShippedRepertoireTest {
+class AppRepertoireTest {
 
-    private fun shipped() = ShippedRepertoire(DomMusicXmlParser(), NoOpDiag, Curriculum.Standard)
+    private fun shipped() = AppRepertoire(DomMusicXmlParser(), NoOpDiag, Curriculum.Standard)
 
     @Test
     fun `a completed read yields every shipped piece exactly once`() = runTest {

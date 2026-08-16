@@ -23,7 +23,7 @@ class MxlContainerTest {
 
     @Test
     fun `an ordinary shipped file still reads`() {
-        val piece = Corpus.pieces.first { it.resourcePath.endsWith(".mxl") }
+        val piece = Corpus.pieces.first { it.locator.endsWith(".mxl") }
 
         val reading = MxlContainer.read(Corpus.read(piece))
 
@@ -34,7 +34,7 @@ class MxlContainerTest {
     /** Every shipped file must sit well inside the caps, or the caps are the wrong ones. */
     @Test
     fun `every shipped mxl is far below the limits`() {
-        val compressed = Corpus.pieces.filter { it.resourcePath.endsWith(".mxl") }
+        val compressed = Corpus.pieces.filter { it.locator.endsWith(".mxl") }
 
         assertTrue("no compressed pieces ship, so this proves nothing", compressed.isNotEmpty())
         for (piece in compressed) {

@@ -3,7 +3,7 @@ title: Reading a score Dewi already has
 kind: feature
 status: shipped
 area: ui
-updated: 2026-08-15
+updated: 2026-08-16
 ---
 
 # Something of your own
@@ -17,6 +17,27 @@ decoration split, same grading, same windowing into passages. `PracticeRequest` 
 carry a `Score` rather than a shipped piece, so by the time anything downstream sees it a song that
 came with the app and a file off the phone are indistinguishable. Otherwise "open a file" would be
 a second way to practise, which is the failure the twin laws exist to prevent.
+
+## It is still there tomorrow
+
+A picked score is **kept**: its bytes are copied into the app's own storage and a row is added to a
+`manifest.tsv` there, in exactly the format the shipped corpus uses. `KeptScores` is a second
+`ScoreLibrary` beside `Corpus`, so from the moment it is kept the file is an ordinary row on the
+shelf — graded, windowed into passages, and choosable by the scheduler like anything else.
+
+Until 2026-08-16 it was not. The score lived in a Compose `remember` and nothing else, and the tab
+shell is a `when` inside `AnimatedContent` — so tapping *Practise this*, which switches tab,
+destroyed the composition that held it. The file had to be found through the system picker again
+every single time. The shelf it belonged on was a whole unwired store; see
+`.claude/CODE-NOTES.md` for why a manifest was used instead of it.
+
+The copy is the app's, and the card says so: **"Deletes this app's copy of the file. Yours stays
+where it is."** Copying rather than keeping a `content://` URI is deliberate — a persisted URI
+grant breaks the moment Dewi moves or renames his file, and a piece that silently stops opening is
+worse than one that takes 12KB of storage.
+
+Only a kept piece can be removed. Offering to delete a shipped one would be a button that lies,
+since it would be back on the next launch.
 
 ## Spec I6 is untouched
 
@@ -64,8 +85,21 @@ roughly twenty times the largest thing that has ever come through.
 - `PickedScoreTest` (9 JVM tests), whose fixtures are **the shipped corpus itself**: bytes the app
   ships and bytes Dewi picks must reach the same score. Plus the refusals — not-MusicXML, empty —
   each naming the file.
+- `KeptScoresTest` (11 JVM tests) over a real temporary directory: the round trip, surviving the
+  object that kept it, re-keeping replacing rather than duplicating, a title full of characters no
+  filesystem takes, a corrupt row costing one piece rather than the shelf, and a vanished file
+  reading as null rather than throwing.
+- `ScoreManifestTest` (7 JVM tests) — the format the app and the import tool now share, including
+  every shipped piece round-tripping through the writer.
+- `ShelfSummaryTest` (4 JVM tests) — the header no longer claims "all public domain" once a picked
+  piece is on the shelf.
 - Seen end to end on the emulator on 2026-08-15: a file pushed to `Downloads`, picked through the
   real system picker, and practised as *Minuet in G — 25 notes at 72bpm*.
+- Seen end to end again on 2026-08-16, driving the real system picker on `primavista-api35`: file
+  picked, kept as 11,579 bytes beside its manifest, **app force-stopped and relaunched**, header
+  reading *"45 pieces, 44 public domain, 1 your own"*, the piece found in the list as an ordinary
+  card, removed from its own card, and the shelf back to *"44 pieces, all public domain"* with the
+  copy deleted.
 
 ## One bug this found
 

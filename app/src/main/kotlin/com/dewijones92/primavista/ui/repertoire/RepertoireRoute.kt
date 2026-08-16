@@ -16,8 +16,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.dewijones92.primavista.di.AppContainer
+import com.dewijones92.primavista.di.AppRepertoire
+import com.dewijones92.primavista.di.KeptScores
 import com.dewijones92.primavista.di.PieceParse
-import com.dewijones92.primavista.di.ShippedRepertoire
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.ScoreId
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +32,7 @@ private const val UNREACHABLE = Int.MAX_VALUE
  * becomes readable at, how much of it opens, how polyphonic it is, and whether anything was lost.
  *
  * Rows appear **as each piece finishes reading** rather than when the whole corpus has. Parsing a
- * real song costs real time (see [ShippedRepertoire]), and a screen that shows twenty-eight bones
+ * real song costs real time (see [AppRepertoire]), and a screen that shows twenty-eight bones
  * for ten seconds and then everything at once reads as broken, where one that fills reads as busy.
  *
  * Ordered easiest first, so what Dewi can read today is at the top rather than buried under a
@@ -41,7 +42,7 @@ private const val UNREACHABLE = Int.MAX_VALUE
  */
 @Composable
 public fun RepertoireRoute(container: AppContainer, modifier: Modifier = Modifier) {
-    val shipped = container.shippedRepertoire
+    val shipped = container.repertoire
     val arrived by shipped.parsed.collectAsState()
     val context = LocalContext.current
     var picked by remember { mutableStateOf<Picked?>(null) }
@@ -51,7 +52,12 @@ public fun RepertoireRoute(container: AppContainer, modifier: Modifier = Modifie
     val scope = rememberCoroutineScope()
     val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            scope.launch { picked = withContext(Dispatchers.Default) { readPickedFile(context, uri, container) } }
+            scope.launch {
+                picked = withContext(Dispatchers.Default) { readPickedFile(context, uri, container) }
+                // Reloaded rather than appended: the kept library is the source of truth for what
+                // is on the shelf, and re-reading it is what makes a kept piece an ordinary row.
+                if (picked is Picked.Readable) withContext(Dispatchers.Default) { shipped.reload() }
+            }
         }
     }
     // Derived once per piece, not once per arrival. Pieces land one at a time, so a plain `map`
@@ -70,6 +76,15 @@ public fun RepertoireRoute(container: AppContainer, modifier: Modifier = Modifie
                 "practise requested id=${score.id.value} title='${score.title}'",
             )
             PracticeRequest.request(score)
+        },
+        onForget = { id ->
+            scope.launch {
+                withContext(Dispatchers.Default) {
+                    container.keptScores.forget(id)
+                    shipped.reload()
+                }
+                if ((picked as? Picked.Readable)?.score?.id == id) picked = null
+            }
         },
         picked = picked,
         onOpenFile = { open.launch(MUSICXML_MIME_TYPES) },
@@ -98,6 +113,14 @@ private fun readPickedFile(context: Context, uri: Uri, container: AppContainer):
         .getOrElse { return Picked.Refused("'$name' could not be opened: ${it.message ?: it::class.simpleName}") }
         ?: return Picked.Refused("'$name' could not be opened")
     val read = readPicked(bytes, name, container.musicXmlParser)
+    if (read is Picked.Readable) {
+        runCatching { container.keptScores.keep(read.asKeptPiece(name), bytes) }.onFailure {
+            container.diag.event(
+                "repertoire",
+                "'$name' read but could not be kept: ${it.message ?: it::class.simpleName}",
+            )
+        }
+    }
     container.diag.event(
         "repertoire",
         when (read) {
@@ -117,11 +140,12 @@ private fun displayNameOf(context: Context, uri: Uri): String =
             ?.use { if (it.moveToFirst()) it.getString(0) else null }
     }.getOrNull() ?: uri.lastPathSegment ?: "the file you chose"
 
-private fun rowFor(container: AppContainer, shipped: ShippedRepertoire, parse: PieceParse): RepertoireRow {
+private fun rowFor(container: AppContainer, shipped: AppRepertoire, parse: PieceParse): RepertoireRow {
     val score = parse.score ?: return unreadable(parse)
     val easiest = parse.passages.firstOrNull()
     return RepertoireRow(
         piece = parse.piece,
+        kept = parse.library == KeptScores.LABEL,
         score = score,
         bars = score.measures.size,
         notes = score.attackedNotes.size,
@@ -137,8 +161,10 @@ private fun rowFor(container: AppContainer, shipped: ShippedRepertoire, parse: P
     )
 }
 
+/** A kept piece that will not read is the one most in need of removing, so it stays removable. */
 private fun unreadable(parse: PieceParse) = RepertoireRow(
     piece = parse.piece,
+    kept = parse.library == KeptScores.LABEL,
     score = null,
     bars = 0,
     notes = 0,

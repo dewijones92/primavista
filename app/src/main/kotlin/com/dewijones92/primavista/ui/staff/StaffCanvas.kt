@@ -1,8 +1,6 @@
 package com.dewijones92.primavista.ui.staff
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -74,41 +72,4 @@ public fun StaffCanvas(
     }
 }
 
-/**
- * A staff whose vertical size is chosen from the available height rather than fixed, so the same
- * screen works on a phone in portrait and a tablet without a second layout.
- */
-@Composable
-public fun FittedStaffCanvas(
-    system: StaffSystem,
-    metrics: GlyphMetrics,
-    modifier: Modifier = Modifier,
-    scrollX: StaffSpaces = StaffSpaces.ZERO,
-    playheadX: StaffSpaces? = null,
-    pinnedAt: Ticks? = null,
-    coverX: StaffSpaces? = null,
-    appearance: (LaidOutNote) -> NoteAppearance = { NoteAppearance.PLAIN },
-) {
-    BoxWithConstraints(modifier) {
-        StaffCanvas(
-            system = system,
-            metrics = metrics,
-            modifier = Modifier.fillMaxSize(),
-            staffSpace = fittedStaffSpace(system, maxHeight),
-            scrollX = scrollX,
-            playheadX = playheadX,
-            pinnedAt = pinnedAt,
-            coverX = coverX,
-            appearance = appearance,
-        )
-    }
-}
-
-private fun fittedStaffSpace(system: StaffSystem, available: Dp): Dp {
-    val needed = system.height.value.toFloat().coerceAtLeast(1f)
-    return (available.value / needed).coerceIn(MIN_STAFF_SPACE.value, MAX_STAFF_SPACE.value).dp
-}
-
 private val DEFAULT_STAFF_SPACE = 7.dp
-private val MIN_STAFF_SPACE = 4.dp
-private val MAX_STAFF_SPACE = 14.dp

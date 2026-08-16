@@ -34,6 +34,8 @@ internal data class RepertoireRow(
     val rung: StageId?,
     val opensAs: Int?,
     val failure: String?,
+    /** A file Dewi opened from the phone, which is the only kind he can remove. */
+    val kept: Boolean = false,
 ) {
     /** Cosmetic losses: worth stating, not worth a warning. */
     val decoration: Int get() = dropped.size - material.size

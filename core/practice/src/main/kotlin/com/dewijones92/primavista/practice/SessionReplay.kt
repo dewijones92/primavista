@@ -158,8 +158,5 @@ private fun replayTiming(tempoBpm: Int, time: TimeSignature, legs: List<PauseLeg
 /** The pauses a live [Conductor] has been through, in the form a report can carry. */
 public fun List<Pair<Long, Long>>.asPauseLegs(): List<PauseLeg> = map { PauseLeg(it.first, it.second) }
 
-/** Convenience for the commonest case: a session that ran from [originNanos] with no pause. */
-public fun unbrokenLegs(originNanos: Long): List<PauseLeg> = listOf(PauseLeg(0L, originNanos))
-
 /** The musical position a replay's clock puts a wall-clock instant at. Used by tests and reports. */
 public fun SessionReplay.positionAt(nanos: Long): Ticks = timing().ticksAt(nanos)

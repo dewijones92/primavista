@@ -44,9 +44,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.dewijones92.primavista.score.Corpus
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.Score
+import com.dewijones92.primavista.score.ScoreId
 import com.dewijones92.primavista.theme.LocalNotationColors
 import com.dewijones92.primavista.ui.mascot.MascotMood
 import com.dewijones92.primavista.ui.mascot.Trill
@@ -59,6 +59,7 @@ internal fun RepertoireScreen(
     rows: List<RepertoireRow>,
     stillReading: Int,
     onPractise: (Score) -> Unit,
+    onForget: (ScoreId) -> Unit,
     picked: Picked?,
     onOpenFile: () -> Unit,
     onDismissPicked: () -> Unit,
@@ -69,27 +70,44 @@ internal fun RepertoireScreen(
         contentPadding = PaddingValues(SCREEN_PADDING),
         verticalArrangement = Arrangement.spacedBy(CARD_GAP),
     ) {
-        item { RepertoireHeader() }
+        item { RepertoireHeader(rows) }
         item { OpenAFile(picked, onOpenFile, onPractise, onDismissPicked) }
-        items(rows, key = { it.piece.id.value }) { row -> RepertoireCard(row, onPractise) }
+        items(rows, key = { it.piece.id.value }) { row -> RepertoireCard(row, onPractise, onForget) }
         if (stillReading > 0) {
-            items(stillReading.coerceAtMost(Corpus.pieces.size)) { SkeletonCard() }
+            items(stillReading.coerceAtLeast(0)) { SkeletonCard() }
         } else if (rows.isEmpty()) {
             item { NoPieces() }
         }
     }
 }
 
+/**
+ * What is on the shelf, counted from the shelf.
+ *
+ * It used to read "44 pieces, all public domain" from `Corpus.pieces.size`, which was a second copy
+ * of the count and became an untrue claim the moment a file off the phone joined them — a picked
+ * piece's rights are exactly what the app says it does not know.
+ */
+internal fun shelfSummary(rows: List<RepertoireRow>): String {
+    val kept = rows.count { it.kept }
+    val provenance = when {
+        kept == 0 -> "all public domain"
+        kept == rows.size -> "all your own"
+        else -> "${rows.size - kept} public domain, $kept your own"
+    }
+    return "${rows.size} pieces, $provenance, easiest first. Tap one to read what it demands, " +
+        "then practise it."
+}
+
 /** Trill is [MascotMood.Curious] here and nowhere else: this is the screen that waits on a choice. */
 @Composable
-private fun RepertoireHeader() {
+private fun RepertoireHeader(rows: List<RepertoireRow>) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("Repertoire", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(2.dp))
             Text(
-                text = "${Corpus.pieces.size} pieces, all public domain, easiest first. Tap one " +
-                    "to read what it demands, then practise it.",
+                text = shelfSummary(rows),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -188,7 +206,7 @@ private fun PickedPiece(picked: Picked.Readable, onPractise: (Score) -> Unit, on
 }
 
 @Composable
-private fun RepertoireCard(row: RepertoireRow, onPractise: (Score) -> Unit) {
+private fun RepertoireCard(row: RepertoireRow, onPractise: (Score) -> Unit, onForget: (ScoreId) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val turn by animateFloatAsState(
         targetValue = if (expanded) HALF_TURN else 0f,
@@ -235,7 +253,7 @@ private fun RepertoireCard(row: RepertoireRow, onPractise: (Score) -> Unit) {
             } else {
                 FactRow(row)
                 DroppedBanner(row)
-                if (expanded) ExpandedDetail(row, onPractise)
+                if (expanded) ExpandedDetail(row, onPractise, onForget)
             }
         }
     }
@@ -317,7 +335,7 @@ private fun Chip(text: String, tint: Color) {
 }
 
 @Composable
-private fun ExpandedDetail(row: RepertoireRow, onPractise: (Score) -> Unit) {
+private fun ExpandedDetail(row: RepertoireRow, onPractise: (Score) -> Unit, onForget: (ScoreId) -> Unit) {
     Spacer(Modifier.height(SECTION_GAP))
     if (row.skills.isNotEmpty()) {
         Heading("What it makes you read")
@@ -370,12 +388,34 @@ private fun ExpandedDetail(row: RepertoireRow, onPractise: (Score) -> Unit) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Spacer(Modifier.height(SECTION_GAP))
-    val score = row.score ?: return
-    Button(onClick = { onPractise(score) }, modifier = Modifier.fillMaxWidth()) {
-        Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(CHEVRON))
-        Spacer(Modifier.width(CHIP_GAP))
-        Text("Practise this")
+    row.score?.let { score ->
+        Button(onClick = { onPractise(score) }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(CHEVRON))
+            Spacer(Modifier.width(CHIP_GAP))
+            Text("Practise this")
+        }
     }
+    if (row.kept) ForgetKept(row, onForget)
+}
+
+/**
+ * Only kept pieces can be removed: a shipped one is part of the app, and offering to delete
+ * something that would be back on the next launch would be a button that lies.
+ */
+@Composable
+private fun ForgetKept(row: RepertoireRow, onForget: (ScoreId) -> Unit) {
+    Spacer(Modifier.height(SECTION_GAP))
+    TextButton(
+        onClick = { onForget(row.piece.id) },
+        modifier = Modifier.fillMaxWidth().testTag("forget-kept"),
+    ) {
+        Text("Remove from my repertoire")
+    }
+    Text(
+        text = "Deletes this app's copy of the file. Yours stays where it is.",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

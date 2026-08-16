@@ -30,7 +30,7 @@ for the whole corpus.
 
 ## What was already done
 
-- One owner (`ShippedRepertoire`) rather than the tab and the scheduler each doing the work.
+- One owner (`AppRepertoire`) rather than the tab and the scheduler each doing the work.
 - Parallel parse.
 - `DifficultySpec.covers` — a lazy sequence that stops at the first refusal, instead of
   building the full reason list only to discard it. Windowing 543ms → 253ms cold, 59ms warm.

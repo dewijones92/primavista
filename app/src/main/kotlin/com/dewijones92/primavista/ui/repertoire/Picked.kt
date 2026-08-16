@@ -1,5 +1,6 @@
 package com.dewijones92.primavista.ui.repertoire
 
+import com.dewijones92.primavista.score.CorpusPiece
 import com.dewijones92.primavista.score.MusicXmlParser
 import com.dewijones92.primavista.score.MusicXmlResult
 import com.dewijones92.primavista.score.PartChoice
@@ -13,7 +14,11 @@ private const val PICKED_LICENCE = "Opened from this device. Its licence is what
 
 /** What came of a file Dewi picked. Never a bare null: a file that will not read has a reason. */
 internal sealed interface Picked {
-    data class Readable(val score: Score, val lost: List<String>) : Picked
+    /**
+     * [part] is the choice that actually worked, and it is carried because re-reading the kept file
+     * with the other one would produce different music from the same bytes.
+     */
+    data class Readable(val score: Score, val lost: List<String>, val part: PartChoice) : Picked
 
     data class Refused(val reason: String) : Picked
 }
@@ -33,6 +38,7 @@ internal fun readPicked(bytes: ByteArray, name: String, parser: MusicXmlParser):
     if (bytes.isEmpty()) return Picked.Refused("'$name' is empty")
     val id = ScoreId("picked-$name")
     val keyboard = parser.parseAny(bytes, id.value, PICKED_LICENCE, PartChoice.Keyboard)
+    val part = if (keyboard is MusicXmlResult.Parsed) PartChoice.Keyboard else PartChoice.First
     val result = keyboard as? MusicXmlResult.Parsed
         ?: parser.parseAny(bytes, id.value, PICKED_LICENCE, PartChoice.First)
     return when (result) {
@@ -42,10 +48,22 @@ internal fun readPicked(bytes: ByteArray, name: String, parser: MusicXmlParser):
                 origin = ScoreOrigin.Parsed(id.value, PICKED_LICENCE)
             ),
             lost = result.material.map { it.toString() },
+            part = part,
         )
         is MusicXmlResult.Failed -> Picked.Refused("'$name' is not MusicXML this app can read: ${result.reason}")
     }
 }
+
+/** What a kept file needs to be re-read next time: the same id, part and licence, one row. */
+internal fun Picked.Readable.asKeptPiece(fileName: String): CorpusPiece = CorpusPiece(
+    id = score.id,
+    title = score.title,
+    composer = score.composer.orEmpty(),
+    source = fileName,
+    licence = PICKED_LICENCE,
+    locator = "",
+    part = part,
+)
 
 /** The file's own name wins only when the engraving has nothing better; many have neither. */
 private fun titleOf(score: Score, name: String): String =

@@ -158,7 +158,7 @@ class CorpusTest {
      */
     @Test
     fun `no score ships that the manifests do not name`() {
-        val named = Corpus.pieces.map { it.resourcePath.substringAfterLast('/') }.toSet()
+        val named = Corpus.pieces.map { it.locator.substringAfterLast('/') }.toSet()
         val shipped = corpusDirectories.flatMap { directory ->
             val url = requireNotNull(Corpus::class.java.getResource(directory)) { "no $directory in the build" }
             java.io.File(url.toURI()).listFiles().orEmpty().filter { it.isFile }.map { it.name }
@@ -176,7 +176,7 @@ class CorpusTest {
             assertTrue(piece.title, piece.composer.isNotBlank())
         }
         assertEquals(Corpus.pieces.size, Corpus.pieces.map { it.id }.toSet().size)
-        assertEquals(Corpus.pieces.size, Corpus.pieces.map { it.resourcePath }.toSet().size)
+        assertEquals(Corpus.pieces.size, Corpus.pieces.map { it.locator }.toSet().size)
     }
 
     @Test

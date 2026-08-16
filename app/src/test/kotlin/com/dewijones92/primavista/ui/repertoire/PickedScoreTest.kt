@@ -22,8 +22,8 @@ class PickedScoreTest {
 
     @Test
     fun `a zipped file is told from a plain one by its content, not its name`() {
-        val zipped = Corpus.pieces.first { it.resourcePath.endsWith(".mxl") }
-        val plain = Corpus.pieces.first { it.resourcePath.endsWith(".musicxml") }
+        val zipped = Corpus.pieces.first { it.locator.endsWith(".mxl") }
+        val plain = Corpus.pieces.first { it.locator.endsWith(".musicxml") }
 
         assertTrue(isCompressedMusicXml(Corpus.read(zipped)))
         assertFalse(isCompressedMusicXml(Corpus.read(plain)))
@@ -31,7 +31,7 @@ class PickedScoreTest {
 
     @Test
     fun `an mxl picked with a misleading name still reads`() {
-        val zipped = Corpus.pieces.first { it.resourcePath.endsWith(".mxl") }
+        val zipped = Corpus.pieces.first { it.locator.endsWith(".mxl") }
 
         val read = readPicked(Corpus.read(zipped), "whatever-he-called-it.txt", parser)
 

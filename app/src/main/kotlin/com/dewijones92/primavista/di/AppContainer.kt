@@ -38,12 +38,14 @@ import com.dewijones92.primavista.practice.Stage
 import com.dewijones92.primavista.practice.TempoConductor
 import com.dewijones92.primavista.practice.Tolerances
 import com.dewijones92.primavista.practice.WindowedJudge
+import com.dewijones92.primavista.score.Corpus
 import com.dewijones92.primavista.score.DerivedScoreSkills
 import com.dewijones92.primavista.score.DomMusicXmlParser
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.Score
 import com.dewijones92.primavista.score.SeededExerciseGenerator
 import com.dewijones92.primavista.score.TimeSignature
+import java.io.File
 import java.time.ZoneId
 
 /**
@@ -118,7 +120,11 @@ public class AppContainer(private val context: Context) {
     public val placementRead: PlacementRead = AdaptivePlacementRead(curriculum)
 
     /** Parsed and windowed once for the whole app: the tab and the scheduler ask the same object. */
-    public val shippedRepertoire: ShippedRepertoire = ShippedRepertoire(musicXmlParser, diag, curriculum)
+    /** Scores Dewi opened from his phone, kept so they are still there tomorrow. */
+    public val keptScores: KeptScores = KeptScores(File(context.filesDir, KEPT_DIR), diag)
+
+    public val repertoire: AppRepertoire =
+        AppRepertoire(musicXmlParser, diag, curriculum, listOf(Corpus, keptScores))
 
     /** Supplied rather than read inside the fold, so two adjacent reads cannot disagree after a flight. */
     public val zone: ZoneId get() = ZoneId.systemDefault()
@@ -251,6 +257,9 @@ public class AppContainer(private val context: Context) {
 
     public companion object {
         public const val DEFAULT_COUNT_IN_BEATS: Int = 4
+
+        /** Inside `filesDir`, so it is app-private and goes when the app does. */
+        private const val KEPT_DIR = "kept"
     }
 }
 

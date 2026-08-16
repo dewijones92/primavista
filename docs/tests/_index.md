@@ -33,16 +33,16 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 
 | Module | JVM tests | Instrumented | Holds |
 |---|---|---|---|
-| `:core:score` | 166 | — | the model, the MusicXML subset, the generator's determinism, `Score.polyphony` (spec I3's predicate), part selection, passages, and whether a spec admits a piece |
-| `:core:audio` | 100 | 26 | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM, which route kind a device type is, and the mic applying the figure for the path it actually opened on; the AudioTrack and AudioRecord bridges on a device, plus the loopback against real hardware — which on the emulator refuses with a reason, because its microphone cannot hear its own speaker |
+| `:core:score` | 173 | — | the model, the MusicXML subset, the generator's determinism, `Score.polyphony` (spec I3's predicate), part selection, passages, whether a spec admits a piece, and the manifest round trip that keeps the import tool and the app reading one format |
+| `:core:audio` | 102 | 26 | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM, which route kind a device type is, and the mic applying the figure for the path it actually opened on; the AudioTrack and AudioRecord bridges on a device, plus the loopback against real hardware — which on the emulator refuses with a reason, because its microphone cannot hear its own speaker |
 | `:core:notation` | 79 | — | staff geometry for both clefs, stems from font anchors, beams, leger lines, `xOf` agreeing with note placement (spec I1) |
 | `:core:practice` | 150 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5), what a piece offers to read, how far ahead the page is covered, re-judging a session from its own report (spec I7), and which latency figure applies to which audio path |
 | `:lib:pitch` | 60 | — | YIN against synthesised tones, onset separation of repeated notes, vibrato held as one note |
 | `:core:database` | 74 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
 | `tools/repertoire` | 20 | — | which pieces ship: the per-composer cap, and that an import removes what it dropped |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
-| `:app` | 118 | 5 | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, the wire between the microphone and the stored latencies, and screen logic that does not need a device |
-| **Total** | **779** | **108** | |
+| `:app` | 133 | 5 | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, the wire between the microphone and the stored latencies, keeping a picked score so it is there tomorrow, and screen logic that does not need a device |
+| **Total** | **803** | **108** | |
 
 ## Deliberately uncovered (and why)
 

@@ -37,7 +37,7 @@ public class AppPracticeWiring(private val container: AppContainer) : PracticeWi
     override val tonePlayer: TonePlayer get() = container.tonePlayer
     override val preferences: SessionPreferences = StoredPreferences(container, container.diag)
 
-    private val shipped get() = container.shippedRepertoire
+    private val shipped get() = container.repertoire
 
     override fun nowEpochMillis(): Long = System.currentTimeMillis()
 

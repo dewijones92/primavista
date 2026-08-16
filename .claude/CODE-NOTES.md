@@ -2726,7 +2726,7 @@ Agents implementing a module append their own `##` section and never rewrite ano
   the file the app parses is the file that was screened. Re-run with
   `./gradlew :tools:repertoire:run --args="report --corpus <dir> --commit <sha>"`.
 
-## app/src/main/kotlin/com/dewijones92/primavista/di/ShippedRepertoire.kt
+## app/src/main/kotlin/com/dewijones92/primavista/di/AppRepertoire.kt
 
 - **What the Repertoire tab's blank wait actually was, measured rather than guessed.** The GC log
   is the instrument: `adb logcat | grep "GC freed"` on the app process, first and last timestamp.
@@ -3065,3 +3065,74 @@ better than a silent one.
 
 The measured figure is never printed without its confidence. A loosely located click still beats an
 assumption, so the figure is used either way, but it is presented as rough rather than as fact.
+
+## Kept scores: a file Dewi picks is still there tomorrow (2026-08-16)
+
+Files: `core/score/.../ScoreManifest.kt`, `app/.../di/KeptScores.kt`,
+`app/.../di/AppRepertoire.kt`, `app/.../ui/repertoire/Picked.kt`,
+`app/.../ui/repertoire/RepertoireScreen.kt`.
+
+### The second unconnected edge, found by looking for the first
+
+After the latency wiring, a sweep for declarations with no production caller turned up three
+things. The largest was `RepertoireStore` — an interface, a Room implementation, entities, a DAO
+and instrumented tests, constructed nowhere. Following it revealed why it mattered: a score picked
+from the phone lived in a Compose `remember` and **nothing else**. Tapping *Practise this* switches
+tab, the tab shell is a `when` inside `AnimatedContent`, so the composition is destroyed and the
+score is gone. Even without that it could not survive the process. "Something of your own" was a
+one-shot that had to be re-picked through the system picker every single time.
+
+### Why a manifest and not the Room store
+
+The store holds a `ScoreSummary` plus licence and source — enough to *list* a piece, not enough to
+*re-read* one. It has no part choice and no locator, because it was designed as a cache of what
+there is to read, and `AppRepertoire` had already taken that job.
+
+What a kept score needs recorded is exactly `CorpusPiece`: id, title, composer, source, licence,
+locator, part. That is already a format this app reads and the import tool writes. So a kept score
+gets a `manifest.tsv` in `filesDir` in the same format, parsed by the same code — no new schema, no
+new types, and no Room migration.
+
+`RepertoireStore` is therefore still unwired and is now known to be superseded. It is left in place
+rather than deleted because dropping the table needs a schema bump and a migration, which is its
+own change; `docs/todos/` carries it.
+
+### `ScoreLibrary`, so a kept file is not a second kind of music
+
+`Corpus` and `KeptScores` both implement it, `AppRepertoire` reads from a list of them, and
+everything downstream — parse, grade, window into passages, row, scheduler — is untouched. This is
+the twin laws applied literally: adding a place music can come from is a new adapter, not a second
+pipeline. `ShippedRepertoire` was renamed `AppRepertoire` in the same pass because it had stopped
+being only shipped, and a name that lies is worse than a name that is long.
+
+`CorpusPiece.resourcePath` became `locator` for the same reason: it is a classpath path for the
+shipped library and a filename for the kept one, and the owning library is what interprets it.
+
+### The ordering and naming decisions that are not arbitrary
+
+- **The score file is written before the manifest row.** The other order leaves a row pointing at
+  nothing when the second write fails; an orphan file is the harmless failure of the two.
+- **The filename is a SHA-256 of the id**, not the title. A picked file's name can be anything at
+  all — `../../etc/passwd`, characters no filesystem takes, two files sharing one name — and a
+  hash makes all of that a non-question. There is a test that keeps a piece named `../../etc/passwd`
+  and asserts the file lands in the kept directory and nowhere else.
+- **One bad manifest row loses one piece, not the shelf.** Rows are parsed individually and a
+  failure is logged and skipped. A manifest parsed whole would let a single corrupt line take every
+  kept score down with it.
+- **The part choice is stored.** `readPicked` tries `Keyboard` and falls back to `First`; if the
+  fallback is not recorded, re-reading the same bytes later can produce different music.
+
+### The header was lying, and had been for a while
+
+`RepertoireHeader` read `Corpus.pieces.size` and the words "all public domain" — a second copy of
+the count, and a claim that stops being true the moment a picked piece is on the shelf, since a
+picked piece's rights are exactly what the app says it does not know. It now counts the rows it was
+handed and says "44 public domain, 1 your own".
+
+### Two dead things removed in the same sweep
+
+`FittedStaffCanvas` was an unused composable holding a **second copy of the staff-fitting
+decision** — height-only, capped at 14dp, where the live one in `PracticeScreen` uses
+`min(height, width)` capped at 20dp. Two copies of one decision that already disagreed, which is
+the exact defect CLAUDE.md records having shipped twice. `unbrokenLegs` was an unused convenience
+next to `SessionReplay.Unbroken`, which is what the code actually uses.
