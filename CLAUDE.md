@@ -236,16 +236,25 @@ done when a report from a week later can settle whether it actually worked.
   `/home/dewi/code/android-sdk` (see `local.properties`, not committed).
 - The `android` CLI (`~/.local/bin/android`) handles emulators, screenshots, layout
   inspection and docs search.
+- **This project's emulator is `primavista-api35`.** Always target it explicitly with
+  `ANDROID_SERIAL`, and never assume the running one is ours: this laptop also runs
+  `totum-api35`, a Fire TV Stick on 192.168.0.211 and sometimes Dewi's own Pixel, and an
+  unqualified `adb install`/`pm clear` will happily hit one of those. A whole day's
+  instrumented runs went onto Totum's emulator here because "reuse the warm one" was read as
+  "use whatever is running". Reuse *ours* if it is up; boot it if it is not.
 - **This laptop's WSL VM runs close to its memory cap.** Gradle's heap is capped at 2GB in
-  `gradle.properties` for that reason, and there is usually already a warm emulator plus
-  another project's Gradle daemon resident. Reuse the running emulator; do not boot a
-  second one; if the VM wobbles, check `journalctl -b -1` for OOM before blaming the code.
+  `gradle.properties` for that reason, and there is usually another project's emulator and
+  Gradle daemon resident. Two emulators fit (about 3.4GB each); three probably do not. If the
+  VM wobbles, check `journalctl -b -1` for OOM before blaming the code. Leave other projects'
+  emulators alone — warm ones are an asset, and they are not yours to restart.
 - **On-device testing matters.** Totum's precedent is exact and worth repeating: a podcast
   RSS bug passed every JVM test and only appeared on a device, because Android's XML parser
   rejects `DocumentBuilder` bean-property toggles that the JVM accepts. **This repo parses
   XML too** (MusicXML), so the parser is hardened the same way — set no optional features,
   guard the ones you must set, and verify a real parse on the emulator, not just in a JVM
-  test.
+  test. `CorpusOnDeviceTest` is that verification: it reads all 44 shipped pieces on a real
+  device and mirrors `CorpusTest`'s claims, so a parser that behaves differently on Android
+  shows up as a device-only failure rather than as nothing at all.
 
 ## Architecture
 

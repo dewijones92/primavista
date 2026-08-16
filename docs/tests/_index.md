@@ -27,7 +27,7 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 | Unit (JVM) | `:core:score`, `:core:notation`, `:core:practice`, `:lib:pitch`, `:lib:common` | rhythm arithmetic, MusicXML parsing, layout geometry, judging, scheduling, YIN against synthesised tones | milliseconds |
 | Golden (JVM) | `:core:notation`, `:app` | a layout is a list of numbers, so a staff's geometry can be asserted exactly; `:app` also renders the corpus to PNG on the JVM and asserts it is not blank | milliseconds |
 | Integration (JVM) | `:core:practice` | a whole session in fake time: Conductor + AnswerSource + judge together, including across a pause | milliseconds |
-| Instrumented | `:core:database`, `:core:audio` | Room round-trips, real migrations, real audio I/O | seconds, needs a device |
+| Instrumented | `:core:database`, `:core:audio`, `:app` | Room round-trips, real migrations, real audio I/O, and **the whole shipped corpus parsed on a device** | seconds, needs a device |
 
 ## Coverage today
 
@@ -41,8 +41,8 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 | `:core:database` | 74 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
 | `tools/repertoire` | 10 | — | which pieces ship: the per-composer cap, and that an import removes what it dropped |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
-| `:app` | 105 | — | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, and screen logic that does not need a device |
-| **Total** | **733** | **99** | |
+| `:app` | 105 | 5 | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, and screen logic that does not need a device |
+| **Total** | **733** | **104** | |
 
 ## Deliberately uncovered (and why)
 
@@ -57,6 +57,10 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
   building, installing and looking — which is how the last four real bugs were found, all of them
   invisible to the suite. That is a stated limitation, not a claim that looking is equivalent: it
   catches what is on screen and nothing about what happens when nobody is watching.
+- **The Android XML parser** was covered only by hope until `CorpusOnDeviceTest`. CLAUDE.md names
+  the precedent — Totum shipped an RSS bug that passed every JVM test and failed only on a phone —
+  and all 44 shipped pieces had been read by a JVM and nothing else. They now parse on a device,
+  cleanly, with the same assertions the JVM run makes.
 - **The layout is not replayed.** `SessionReplay` re-judges a session exactly (spec I7), but it
   rebuilds the music and the clock, not the engraving — so a claim about I1's scroll geometry is
   still read out of a report rather than recomputed from it.
