@@ -31,7 +31,13 @@ class FakeCapture(
     private val noiseAmplitude: Float = 0f,
     private val refusal: CaptureStart.Refused? = null,
     private val route: AudioRoute = FAKE_ROUTE,
+    private val rerouteTo: AudioRoute? = null,
+    private val rerouteAfterReads: Int = Int.MAX_VALUE,
 ) : PcmCapture {
+
+    /** Android reroutes a live capture when a headset connects, so the fake can too. */
+    override var currentRoute: AudioRoute = route
+        private set
 
     var starts = 0
         private set
@@ -64,6 +70,7 @@ class FakeCapture(
     override fun read(into: FloatArray): CaptureRead {
         if (reads >= maxReads) return CaptureRead(0, position)
         reads++
+        if (rerouteTo != null && reads > rerouteAfterReads) currentRoute = rerouteTo
         val first = position
         val frames = minOf(framesPerRead, into.size)
         for (index in into.indices) {
@@ -88,11 +95,12 @@ class FakeCapture(
 }
 
 /** Emits a queued batch of notes per push, then nothing. */
+/** One argument per push, so a test can put a note either side of something changing mid-stream. */
 class FakeTracker(
-    notes: List<TrackedNote>,
+    vararg pushes: List<TrackedNote>,
     override val sampleRate: Int = FAKE_RATE,
 ) : MonophonicNoteTracker {
-    private val queued = ArrayDeque(listOf(notes))
+    private val queued = ArrayDeque(pushes.toList())
 
     var resets = 0
         private set

@@ -1,7 +1,7 @@
 ---
 title: Backlog
 kind: index
-updated: 2026-08-15
+updated: 2026-08-16
 ---
 
 # Backlog
@@ -13,7 +13,7 @@ never silently abandoned.
 
 | Item | Priority | Area | Why it matters |
 |---|---|---|---|
-| [measure-audio-latency](measure-audio-latency.md) | high | audio | Until the mic path's real round-trip latency is measured, every mic verdict carries a timing bias of unknown size — the most likely way the app lies to Dewi |
+| [measure-audio-latency](measure-audio-latency.md) | high | audio | Mechanism built and wired; what is left is one number only Dewi's phone can give — Settings → Audio timing → Measure it, in a quiet room |
 | [midi-input](midi-input.md) | medium | input | The third `AnswerSource` adapter: exact, zero-ambiguity, and the only honest route to judging polyphony |
 | [repertoire-load-cost](repertoire-load-cost.md) | medium | score | Reading the corpus holds the emulator in GC for 12 seconds; unmeasured on the real phone |
 

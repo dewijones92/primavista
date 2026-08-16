@@ -100,7 +100,7 @@ public class MicPitchAnswerSource(
     }
 
     private suspend fun FlowCollector<PlayedNote>.listen(opened: CaptureStart.Started) {
-        applied = routeLatencies.applied(opened.route)
+        applyFigureFor(opened.route)
         val tracker = trackerFor(opened.sampleRate).also { it.reset() }
         if (tracker.sampleRate != opened.sampleRate) {
             diag.event(
@@ -148,6 +148,7 @@ public class MicPitchAnswerSource(
             diag.counted(TAG, "dropped.outsideMidiRange")
             return
         }
+        applyFigureFor(capture.currentRoute)
         val correction = MicTimestampCorrection.correct(
             onsetNanos = capture.frameTimestampNanos(note.atFrame),
             detectionDelayFrames = note.detectionDelayFrames,
@@ -167,6 +168,20 @@ public class MicPitchAnswerSource(
                 confidence = note.confidence,
             ),
         )
+    }
+
+    /**
+     * Checked per note rather than once at open: Android reroutes a live capture when a headset
+     * connects, and a note arriving over a radio hop must not be corrected by the built-in mic's
+     * figure. A no-op unless the path actually moved, so the store is read once per route.
+     */
+    private suspend fun applyFigureFor(route: AudioRoute) {
+        if (route == applied.route) return
+        val previous = applied
+        applied = routeLatencies.applied(route)
+        if (previous.route != AudioRoute.Unidentified) {
+            diag.event(TAG, "input rerouted ${previous.route.id} -> ${route.id} mid-session; now $applied")
+        }
     }
 
     /**

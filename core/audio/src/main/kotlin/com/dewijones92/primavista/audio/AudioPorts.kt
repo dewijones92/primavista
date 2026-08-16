@@ -64,6 +64,13 @@ public interface PcmCapture : AudioResource {
     public val sampleRate: Int
 
     /**
+     * The path sound is arriving by **right now**, which is not always the one [start] opened on:
+     * Android reroutes a live capture when a headset connects. [AudioRoute.Unidentified] before a
+     * capture opens, and it must be re-read rather than remembered.
+     */
+    public val currentRoute: AudioRoute
+
+    /**
      * A result rather than an exception, because the commonest failure is Dewi declining the
      * microphone permission — an ordinary thing a person does, which must surface as a refusal with
      * a reason, not as a crash. This mirrors the judge's refusal-with-reason (spec I3).

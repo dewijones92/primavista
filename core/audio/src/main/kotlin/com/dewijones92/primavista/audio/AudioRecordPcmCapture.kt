@@ -64,6 +64,8 @@ public class AudioRecordPcmCapture(
 
     public val activeCapture: Negotiated? get() = negotiated
 
+    override val currentRoute: AudioRoute get() = negotiated?.route ?: AudioRoute.Unidentified
+
     override fun start(): CaptureStart {
         if (released) return refuse(CaptureStart.Refused.NoUsableConfiguration("this capture was released"))
         if (record != null) {
@@ -143,6 +145,7 @@ public class AudioRecordPcmCapture(
         record = opened.record
         val route = DeviceAudioRoutes.routeOf(opened.record.routedDevice)
         negotiated = Negotiated(opened.sourceName, opened.sampleRate, opened.bufferFrames, route)
+        watchForReroute(opened.record)
         framePosition = 0L
         readsSinceTimestamp = 0
         everMeasured = false
@@ -158,6 +161,24 @@ public class AudioRecordPcmCapture(
             "source=${negotiated?.sourceName} route=${negotiated?.route?.id} frames=$framePosition " +
                 "timebase=${timebase.provenance} worstDrift=${worstDriftFrames}frames"
         }
+    }
+
+    /**
+     * Android reroutes a live capture when a headset connects, and the latency of the new path is
+     * not the old one's. Handler-less so the callback runs on the caller's thread rather than
+     * needing a Looper this class does not own.
+     */
+    private fun watchForReroute(active: AudioRecord) {
+        active.addOnRoutingChangedListener(
+            { routing ->
+                val moved = DeviceAudioRoutes.routeOf(routing.routedDevice)
+                val was = negotiated ?: return@addOnRoutingChangedListener
+                if (moved == was.route) return@addOnRoutingChangedListener
+                negotiated = was.copy(route = moved)
+                diag.event(TAG, "rerouted mid-capture ${was.route.id} -> ${moved.id} at frame=$framePosition")
+            },
+            null,
+        )
     }
 
     private fun refreshAnchor(active: AudioRecord) {

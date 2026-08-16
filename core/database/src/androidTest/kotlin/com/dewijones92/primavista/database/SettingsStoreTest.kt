@@ -1,7 +1,10 @@
 package com.dewijones92.primavista.database
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.dewijones92.primavista.practice.AudioRoute
 import com.dewijones92.primavista.practice.InputLatency
+import com.dewijones92.primavista.practice.RouteKind
+import com.dewijones92.primavista.practice.RouteLatency
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -49,34 +52,37 @@ class SettingsStoreTest {
 
     @Test
     fun anUnmeasuredRouteReadsAsNullRatherThanZeroLatency() = runBlocking {
-        assertEquals(StoredReading.Readable(null), store.latency(AudioRoute("BLUETOOTH_A2DP")))
+        assertEquals(StoredReading.Readable(null), store.latency(AudioRoute(RouteKind.Bluetooth, "a headset")))
     }
 
     @Test
     fun latencyIsStoredPerRouteWithItsProvenance() = runBlocking {
-        val wired = AudioRoute("WIRED_HEADSET")
-        val speaker = AudioRoute("BUILTIN_SPEAKER")
-        store.recordLatency(wired, InputLatency(41.0, InputLatency.Provenance.Measured), atEpochMillis = 7L)
-        store.recordLatency(speaker, InputLatency(180.0, InputLatency.Provenance.Assumed), atEpochMillis = 8L)
+        val wired = AudioRoute(RouteKind.Wired, "a wired headset")
+        val speaker = AudioRoute(RouteKind.BuiltIn, "the built-in mic")
+        val measured = InputLatency(41.0, InputLatency.Provenance.Measured)
+        val assumed = InputLatency(180.0, InputLatency.Provenance.Assumed)
+        store.recordLatency(wired, measured, atEpochMillis = 7L)
+        store.recordLatency(speaker, assumed, atEpochMillis = 8L)
 
-        assertEquals(InputLatency(41.0, InputLatency.Provenance.Measured), store.latency(wired).valueOrNull())
-        assertEquals(InputLatency(180.0, InputLatency.Provenance.Assumed), store.latency(speaker).valueOrNull())
+        assertEquals(RouteLatency(wired, measured, 7L), store.latency(wired).valueOrNull())
+        assertEquals(RouteLatency(speaker, assumed, 8L), store.latency(speaker).valueOrNull())
     }
 
     @Test
     fun remeasuringARouteReplacesItsFigure() = runBlocking {
-        val wired = AudioRoute("WIRED_HEADSET")
+        val wired = AudioRoute(RouteKind.Wired, "a wired headset")
+        val remeasured = InputLatency(39.5, InputLatency.Provenance.Measured)
         store.recordLatency(wired, InputLatency(180.0, InputLatency.Provenance.Assumed), atEpochMillis = 1L)
-        store.recordLatency(wired, InputLatency(39.5, InputLatency.Provenance.Measured), atEpochMillis = 2L)
+        store.recordLatency(wired, remeasured, atEpochMillis = 2L)
 
-        assertEquals(InputLatency(39.5, InputLatency.Provenance.Measured), store.latency(wired).valueOrNull())
+        assertEquals(RouteLatency(wired, remeasured, 2L), store.latency(wired).valueOrNull())
         assertEquals(1, database.routeLatency().all().size)
     }
 
     @Test
     fun everyStoredRouteComesBackWithItsFigureProvenanceAndDate() = runBlocking {
-        val wired = AudioRoute("WIRED_HEADSET")
-        val speaker = AudioRoute("BUILTIN_SPEAKER")
+        val wired = AudioRoute(RouteKind.Wired, "a wired headset")
+        val speaker = AudioRoute(RouteKind.BuiltIn, "the built-in mic")
         store.recordLatency(wired, InputLatency(41.0, InputLatency.Provenance.Measured), atEpochMillis = 7L)
         store.recordLatency(speaker, InputLatency(180.0, InputLatency.Provenance.Assumed), atEpochMillis = 8L)
 
@@ -104,12 +110,9 @@ class SettingsStoreTest {
     fun anEnumNameThisBuildDoesNotKnowRefusesTheRouteLatenciesInsteadOfCrashingSettings() = runBlocking {
         val diag = RecordingDiag()
         store = RoomSettingsStore(database, diag)
-        store.recordLatency(
-            AudioRoute("WIRED_HEADSET"),
-            InputLatency(41.0, InputLatency.Provenance.Measured),
-            atEpochMillis = 7L,
-        )
-        corruptStoredProvenance()
+        val wired = AudioRoute(RouteKind.Wired, "a wired headset")
+        store.recordLatency(wired, InputLatency(41.0, InputLatency.Provenance.Measured), atEpochMillis = 7L)
+        corruptStoredProvenance(wired)
 
         val reading = store.latencies()
 
@@ -123,9 +126,9 @@ class SettingsStoreTest {
 
     @Test
     fun theSameCorruptRowRefusesTheSingleRouteReadRatherThanReadingAsUnmeasured() = runBlocking {
-        val wired = AudioRoute("WIRED_HEADSET")
+        val wired = AudioRoute(RouteKind.Wired, "a wired headset")
         store.recordLatency(wired, InputLatency(41.0, InputLatency.Provenance.Measured), atEpochMillis = 7L)
-        corruptStoredProvenance()
+        corruptStoredProvenance(wired)
 
         assertTrue(store.latency(wired) is StoredReading.Unreadable)
     }
@@ -133,12 +136,9 @@ class SettingsStoreTest {
     /** Names why the accessor has to exist: the DAO the app used to call still takes it down. */
     @Test
     fun theRawDaoStillThrowsWhichIsWhyTheStoreAccessorExists() = runBlocking {
-        store.recordLatency(
-            AudioRoute("WIRED_HEADSET"),
-            InputLatency(41.0, InputLatency.Provenance.Measured),
-            atEpochMillis = 7L,
-        )
-        corruptStoredProvenance()
+        val wired = AudioRoute(RouteKind.Wired, "a wired headset")
+        store.recordLatency(wired, InputLatency(41.0, InputLatency.Provenance.Measured), atEpochMillis = 7L)
+        corruptStoredProvenance(wired)
 
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking { database.routeLatency().all() }
@@ -146,8 +146,11 @@ class SettingsStoreTest {
         Unit
     }
 
-    private fun corruptStoredProvenance() {
-        database.openHelper.writableDatabase
-            .execSQL("UPDATE route_latency SET provenance = 'Guessed' WHERE route = 'WIRED_HEADSET'")
+    /** Takes the route rather than naming its id, so the SQL cannot drift from the stored key. */
+    private fun corruptStoredProvenance(route: AudioRoute) {
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE route_latency SET provenance = 'Guessed' WHERE route = ?",
+            arrayOf(route.id),
+        )
     }
 }

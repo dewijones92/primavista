@@ -120,6 +120,41 @@ class MicRouteLatencyTest {
         assertEquals(headset, source.latencyProvenance.route)
     }
 
+    /**
+     * Android reroutes a live capture when a headset connects. A note arriving over a radio hop
+     * after that must not be corrected by the figure measured on the built-in mic.
+     */
+    @Test
+    fun `a headset connecting mid-session moves the figure with it`() = runBlocking {
+        val diag = RecordingDiag()
+        val moving = FakeCapture(maxReads = 2, route = builtIn, rerouteTo = headset, rerouteAfterReads = 1)
+        val note = TrackedNote(Hertz(A4_HERTZ), ONSET_FRAME, GOOD_CONFIDENCE, 0)
+        val heard = FakeTracker(listOf(note), listOf(note))
+        val source = source(moving, FakeRouteLatencies(measuredOnBuiltIn), heard, diag = diag)
+
+        val played = source.notes().toList()
+
+        assertEquals(2, played.size)
+        assertEquals(headset, source.latencyProvenance.route)
+        assertEquals(InputLatency.Provenance.Assumed, source.latency.provenance)
+        assertNotNull(
+            "a report must be able to see the path move: ${diag.events}",
+            diag.events.firstOrNull { it.contains("rerouted") && it.contains(headset.id) },
+        )
+    }
+
+    /** The store is read once per path, not once per note — a note is a hot path. */
+    @Test
+    fun `staying on one path does not re-read the stored figure for every note`() = runBlocking {
+        val known = FakeRouteLatencies(measuredOnBuiltIn)
+        val steady = FakeCapture(maxReads = 3, route = builtIn)
+        val note = TrackedNote(Hertz(A4_HERTZ), ONSET_FRAME, GOOD_CONFIDENCE, 0)
+
+        source(steady, known, FakeTracker(listOf(note), listOf(note), listOf(note))).notes().toList()
+
+        assertEquals(1, known.reads)
+    }
+
     @Test
     fun `the listening line names the route and what its figure is worth`() = runBlocking {
         val diag = RecordingDiag()
@@ -151,9 +186,13 @@ class MicRouteLatencyTest {
 
     private class FakeRouteLatencies(private val stored: RouteLatency?) : RouteLatencies {
         val recorded = mutableListOf<Pair<AudioRoute, InputLatency>>()
+        var reads = 0
+            private set
 
-        override suspend fun applied(route: AudioRoute): AppliedLatency =
-            LatencyPolicy.decide(route, recordedFor(route) ?: stored, NOW)
+        override suspend fun applied(route: AudioRoute): AppliedLatency {
+            reads++
+            return LatencyPolicy.decide(route, recordedFor(route) ?: stored, NOW)
+        }
 
         override suspend fun record(route: AudioRoute, latency: InputLatency) {
             recorded += route to latency

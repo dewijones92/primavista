@@ -42,7 +42,7 @@ class AudioRecordPcmCaptureInstrumentedTest {
     @Test
     fun opensAKnownSourceAtAKnownRateAndSaysWhichInTheLog() {
         val started = capture.start() as CaptureStart.Started
-        val route = capture.activeRoute
+        val route = capture.activeCapture
 
         assertNotNull("no route was recorded", route)
         assertTrue(
@@ -107,12 +107,12 @@ class AudioRecordPcmCaptureInstrumentedTest {
     @Test
     fun aSecondStartIsIgnoredRatherThanLeakingAnAudioRecord() {
         capture.start()
-        val route = capture.activeRoute
+        val route = capture.activeCapture
 
         val again = capture.start()
 
         assertTrue("a second start must still report the open capture", again is CaptureStart.Started)
-        assertEquals(route, capture.activeRoute)
+        assertEquals(route, capture.activeCapture)
         assertNotNull(diag.events.firstOrNull { it.contains("already capturing") })
     }
 
