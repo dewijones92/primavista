@@ -41,8 +41,8 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 | `:core:database` | 74 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
 | `tools/repertoire` | 20 | — | which pieces ship: the per-composer cap, and that an import removes what it dropped |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
-| `:app` | 155 | 5 | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, the wire between the microphone and the stored latencies, keeping a picked score so it is there tomorrow, how wide the tapped keyboard is and where the music sits on it, what a wait says while the library is read, and screen logic that does not need a device |
-| **Total** | **835** | **108** | |
+| `:app` | 159 | 5 | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, the wire between the microphone and the stored latencies, keeping a picked score so it is there tomorrow, how wide the tapped keyboard is and where the music sits on it, what a wait says while the library is read, whether a notehead outranks the staff lines behind it in both themes, and screen logic that does not need a device |
+| **Total** | **839** | **108** | |
 
 ## Deliberately uncovered (and why)
 

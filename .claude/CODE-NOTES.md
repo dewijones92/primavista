@@ -3277,3 +3277,28 @@ the stub is visible at all.
 left voids above and below and read as an unfinished page rather than a spacious one. At 260dp it
 is a hero. Nothing else about the scaffold changed — the layout was right, the illustration was
 just too small for it.
+
+## The notes were less visible than the lines behind them (2026-08-16)
+
+File: `app/.../theme/Color.kt`, held by `app/src/test/.../theme/NotationContrastTest.kt`.
+
+Found by putting the emulator in dark mode and looking at the practice screen. An unjudged note
+ahead of the playhead is drawn in `upcoming`. In the dark palette that was `#8B84A3` against staff
+lines of `#8A82A0` — WCAG contrast 4.97 against 4.85, a difference of two and a half percent, which
+is to say none. The light palette had the same fault the other way up: `upcoming` at `#7C776A` was
+*lighter* than its `#5A5648` lines, so the note was the less prominent of the two.
+
+So in both themes the thing you are meant to read was, at best, exactly as visible as the ruling it
+sits on. In an app whose entire purpose is reading notation at speed, that is close to the worst
+single defect available, and it had survived every screenshot because on white paper a solid black
+blob still reads — it is only obviously wrong once the theme inverts.
+
+`upcoming` is now clearly ahead of the lines in both: `#CFC9DD` on dark, `#322E27` on light.
+
+**It is a test rather than an eye judgement**, because this is the app's purpose expressed as a
+colour and eyes are exactly what missed it for months. `NotationContrastTest` computes WCAG
+relative luminance and holds four things: an upcoming note beats its staff lines by a clear margin,
+it carries real contrast against the paper in absolute terms, it stays *short* of fully inked so a
+verdict landing is still a change, and `missed` and `upcoming` stay far enough apart that a verdict
+is not mistaken for a note simply not reached yet. It was run against the old colours first and
+fails on the dark palette with the numbers above.
