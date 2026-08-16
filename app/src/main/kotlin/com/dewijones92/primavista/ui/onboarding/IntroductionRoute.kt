@@ -199,5 +199,5 @@ private fun placedWords(placement: Placement?, stage: Stage?): String {
         "Nothing here is fixed: what you read next is chosen from how you actually do."
 }
 
-private val HERO = 190.dp
+private val HERO = 260.dp
 private val GAP = 10.dp

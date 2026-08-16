@@ -100,7 +100,16 @@ private fun SessionBar(point: SessionPoint, index: Int, modifier: Modifier) {
         animationSpec = tween(BAR_MILLIS, delayMillis = index * BAR_STAGGER, easing = FastOutSlowInEasing),
         label = "session-bar",
     )
-    Box(modifier.fillMaxHeight(), contentAlignment = Alignment.BottomCenter) {
+    // A bar with nothing behind it floats: two poor sessions rendered as thin lines under an empty
+    // rectangle, which reads as a broken chart rather than as two low scores. The track is the same
+    // slot-and-fill language the skill meters already use.
+    Box(
+        modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(topStart = BAR_CORNER, topEnd = BAR_CORNER))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -151,7 +160,7 @@ private const val WHAT_THE_BARS_ARE =
 private const val MAX_BARS = 12
 private const val BAR_MILLIS = 520
 private const val BAR_STAGGER = 40
-private const val MIN_VISIBLE = 0.03f
+private const val MIN_VISIBLE = 0.06f
 private const val GOOD_ACCURACY = 0.85
 private const val MIDDLING_ACCURACY = 0.6
 private val STRIP_HEIGHT = 72.dp

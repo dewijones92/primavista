@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -23,6 +24,7 @@ import com.dewijones92.primavista.ui.practice.PracticeIntent
 import com.dewijones92.primavista.ui.practice.PracticeScreen
 import com.dewijones92.primavista.ui.practice.PracticeUiState
 import com.dewijones92.primavista.ui.practice.PracticeViewModel
+import com.dewijones92.primavista.ui.practice.ReadingProgress
 
 /**
  * One practice session, on a [PracticeWiring] the caller chose.
@@ -78,6 +80,7 @@ internal fun FocusedSession(
         }
     }
 
+    val readSoFar by container.repertoire.parsed.collectAsState()
     Column(modifier.fillMaxSize()) {
         header(state)
         PracticeScreen(
@@ -89,6 +92,7 @@ internal fun FocusedSession(
             onKeyPressed = { midi, nanos -> container.tapSource.onKeyPressed(midi, nanos) },
             onFrame = viewModel::tick,
             onChange = viewModel::change,
+            reading = ReadingProgress(readSoFar.size, container.repertoire.expected),
             modifier = Modifier.fillMaxWidth().weight(1f),
         )
         footer(state, viewModel)

@@ -3237,3 +3237,43 @@ music beyond the pinned clef and time signature is what sets the size. Growing t
 showing less of what is coming, which is the one thing a sight-reading trainer must not trade away.
 The spare height cannot go to the keyboard either — a grand-staff piece needs it, and taking it
 would shrink the notation on exactly the intermediate material where reading is hardest.
+
+## Making the wait, the chart and the welcome carry their weight (2026-08-16)
+
+Files: `app/.../ui/practice/ReadingProgress.kt`, `app/.../ui/practice/PracticeScreen.kt`,
+`app/.../ui/progress/ProgressTrend.kt`, `app/.../ui/onboarding/IntroductionRoute.kt`.
+
+### The first wait in the app said nothing
+
+Tapping *Read this* on a cold start shows an empty card for as long as it takes to parse the
+corpus — seconds on the emulator. It said one grey sentence and never moved, which is
+indistinguishable from a screen that has hung.
+
+It now shows Trill, a real count (`Reading your songs… 16 of 44`) and a bar that fills. The count
+comes from `AppRepertoire.parsed`, collected at the two routes that already hold the container and
+passed down as `ReadingProgress`, so `PracticeScreen` stays a pure function of its inputs and the
+wiring port is untouched.
+
+**Why the wait is not simply removed.** `choose()` asks `passages()` before the scheduler, because
+the scheduler has to know what is on offer before it can prefer a real song to a generated drill. At
+stage one the answer is always a generated exercise, so the parse is pure waiting — but skipping it
+would mean choosing from a corpus that has not finished arriving, and the choice would then depend
+on parse timing rather than on the seed. This app replays sessions from their seed (spec I7), so
+that trade is not available. Making the wait legible is the honest fix; making it shorter is
+`docs/todos/repertoire-load-cost.md`, which is waiting on a measurement from the real phone.
+
+### Two 0% sessions looked like a broken chart
+
+`SessionBar` floored the height at 3% of a 72dp strip — a 2dp hairline — and drew nothing behind
+it. So a beginner's first two runs rendered as two thin red lines under an empty rectangle.
+
+Each bar now sits in a track, which is the slot-and-fill language the skill meters already use, so
+an empty column reads as a score of zero rather than as a missing graphic. The floor went to 6% so
+the stub is visible at all.
+
+### The welcome bird was adrift
+
+`IntroStepScaffold` centres its content in whatever space is left, so a 190dp bird in a ~700dp box
+left voids above and below and read as an unfinished page rather than a spacious one. At 260dp it
+is a hero. Nothing else about the scaffold changed — the layout was right, the illustration was
+just too small for it.

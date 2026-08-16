@@ -26,6 +26,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -54,6 +56,7 @@ import com.dewijones92.primavista.score.Midi
 import com.dewijones92.primavista.score.Score
 import com.dewijones92.primavista.score.Ticks
 import com.dewijones92.primavista.theme.LocalNotationColors
+import com.dewijones92.primavista.ui.mascot.MascotMood
 import com.dewijones92.primavista.ui.mascot.Trill
 import com.dewijones92.primavista.ui.staff.NoteStyling
 import com.dewijones92.primavista.ui.staff.PinnedFurniture
@@ -77,6 +80,7 @@ public fun PracticeScreen(
     /** Null hides the setup controls entirely: a control nothing can act on must not be shown. */
     onChange: ((PracticeChange) -> Unit)? = null,
     setup: SessionSetup? = null,
+    reading: ReadingProgress = ReadingProgress.Settled,
 ) {
     // The frame clock drives the session. It is the UI's job to decide *when to look*; the
     // Conductor remains the only thing that knows what time it is (see .claude/CODE-NOTES.md).
@@ -98,7 +102,7 @@ public fun PracticeScreen(
                 .weight(1f)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
-            ScrollingStaff(state, metrics)
+            ScrollingStaff(state, metrics, reading)
             CountInOverlay(state.countInBeatsRemaining, state.countInBeats)
         }
 
@@ -123,11 +127,11 @@ public fun PracticeScreen(
  * matters most.
  */
 @Composable
-private fun ScrollingStaff(state: PracticeUiState, metrics: GlyphMetrics) {
+private fun ScrollingStaff(state: PracticeUiState, metrics: GlyphMetrics, reading: ReadingProgress) {
     val notation = LocalNotationColors.current
     val system = state.system
     if (system == null) {
-        EmptyStaffCard(state)
+        EmptyStaffCard(state, reading)
         return
     }
     val landings = rememberVerdictLandings(state.verdicts)
@@ -206,8 +210,15 @@ private val InputMode.needsKeyboard: Boolean
 private val PracticeUiState.reviewing: Boolean
     get() = transport == TransportState.Finished && !previewing
 
+/**
+ * A wait that says what it is waiting for.
+ *
+ * It was one grey sentence on an empty card, and on a cold start the corpus takes seconds — so the
+ * first thing anyone ever does in this app was to stare at a blank rectangle wondering whether it
+ * had broken. Silence is as hard to read for a person as it is in a report.
+ */
 @Composable
-private fun EmptyStaffCard(state: PracticeUiState) {
+private fun EmptyStaffCard(state: PracticeUiState, reading: ReadingProgress) {
     val notation = LocalNotationColors.current
     Card(
         modifier = Modifier.fillMaxWidth().height(EMPTY_STAFF_HEIGHT),
@@ -218,14 +229,34 @@ private fun EmptyStaffCard(state: PracticeUiState) {
         Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
             val refusal = state.refusal
             if (refusal == null) {
-                Text(
-                    text = if (state.loading) "Choosing something to read…" else "Nothing loaded",
-                    color = notation.ink.copy(alpha = MUTED_ALPHA),
-                    style = MaterialTheme.typography.bodyMedium,
+                Waiting(
+                    state,
+                    reading,
+                    notation.ink
                 )
             } else {
                 RefusalOnPaper(refusal, notation.ink, MUTED_ALPHA)
             }
+        }
+    }
+}
+
+@Composable
+private fun Waiting(state: PracticeUiState, reading: ReadingProgress, ink: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Trill(MascotMood.Curious, Modifier.size(WAITING_BIRD))
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = waitingText(state.loading, reading),
+            color = ink.copy(alpha = MUTED_ALPHA),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (state.loading && !reading.settled) {
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { reading.fraction },
+                modifier = Modifier.width(WAITING_BAR).clip(RoundedCornerShape(WAITING_BAR_CORNER)),
+            )
         }
     }
 }
@@ -434,6 +465,9 @@ private val BRASS_GLOW = Color(0x26E8A13C)
 private val STAFF_CORNER = 20.dp
 private val STAFF_ELEVATION = 6.dp
 private val EMPTY_STAFF_HEIGHT = 220.dp
+private val WAITING_BIRD = 72.dp
+private val WAITING_BAR = 160.dp
+private val WAITING_BAR_CORNER = 4.dp
 private val FELT_HEIGHT = 2.dp
 private val FALLBOARD_SHADOW = 7.dp
 private val FALLBOARD_SHADOW_COLOR = Color(0x40000000)

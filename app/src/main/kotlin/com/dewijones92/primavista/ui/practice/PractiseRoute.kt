@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -91,6 +92,7 @@ public fun PractiseRoute(container: AppContainer, modifier: Modifier = Modifier)
         sessionSetup(viewModel, container) { micPermission.launch(Manifest.permission.RECORD_AUDIO) }
     }
 
+    val readSoFar by container.repertoire.parsed.collectAsState()
     Column(modifier.fillMaxSize()) {
         val showingStaff = !state.loading && (state.score != null || state.refusal != null)
         Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -104,6 +106,7 @@ public fun PractiseRoute(container: AppContainer, modifier: Modifier = Modifier)
                     onKeyPressed = { midi, nanos -> tapped(container, midi, nanos) },
                     onFrame = viewModel::tick,
                     onChange = viewModel::change,
+                    reading = ReadingProgress(readSoFar.size, container.repertoire.expected),
                     setup = setup,
                 )
             } else {
