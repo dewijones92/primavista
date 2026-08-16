@@ -2,7 +2,11 @@ package com.dewijones92.primavista.audio
 
 import com.dewijones92.primavista.common.Diag
 import com.dewijones92.primavista.common.NoOpDiag
+import com.dewijones92.primavista.practice.AudioRoute
 import com.dewijones92.primavista.score.Midi
+
+/** What was measured, and which path it was measured on — a figure without its route is unusable. */
+public data class LoopbackMeasurement(val route: AudioRoute, val result: InputLatencyResult)
 
 /**
  * Plays a click, listens for it, and reports the input latency between the two — or refuses and
@@ -15,12 +19,15 @@ public class LoopbackCalibrator(
     private val diag: Diag = NoOpDiag,
     private val bufferFrames: Int = MicPitchAnswerSource.DEFAULT_BUFFER_FRAMES,
 ) {
-    public fun measure(player: TonePlayer): InputLatencyResult =
+    public fun measure(player: TonePlayer): LoopbackMeasurement =
         when (val opened = capture.start()) {
-            is CaptureStart.Refused -> unmeasurable("the microphone would not open: ${opened.reason}")
+            is CaptureStart.Refused -> LoopbackMeasurement(
+                AudioRoute.Unidentified,
+                unmeasurable("the microphone would not open: ${opened.reason}"),
+            )
 
             is CaptureStart.Started -> try {
-                run(player, opened)
+                LoopbackMeasurement(opened.route, run(player, opened))
             } finally {
                 capture.stop()
             }

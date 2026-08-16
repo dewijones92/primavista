@@ -1,7 +1,9 @@
 package com.dewijones92.primavista.database
 
+import com.dewijones92.primavista.practice.AudioRoute
 import com.dewijones92.primavista.practice.InputLatency
 import com.dewijones92.primavista.practice.NoteJudgement
+import com.dewijones92.primavista.practice.RouteLatency
 import com.dewijones92.primavista.score.Polyphony
 import com.dewijones92.primavista.score.ScoreId
 import com.dewijones92.primavista.score.ScoreOrigin
@@ -10,10 +12,6 @@ import kotlinx.coroutines.flow.Flow
 
 @JvmInline
 public value class SessionId(public val value: String)
-
-/** An audio route as the platform names it — a speaker and a headset have different latency. */
-@JvmInline
-public value class AudioRoute(public val id: String)
 
 /**
  * A practice attempt as it is stored and read back. One type in both directions, so a session
@@ -42,13 +40,6 @@ public data class StoredSession(
     public val accuracy: Double
         get() = if (notesExpected == 0) 0.0 else correct.toDouble() / notesExpected
 }
-
-/** One stored latency measurement. Per route, because a headset and a speaker are not one path. */
-public data class RouteLatency(
-    val route: AudioRoute,
-    val latency: InputLatency,
-    val measuredAtEpochMillis: Long,
-)
 
 /** A known score. [ScoreSummary] is reused rather than re-declared: the scheduler reads it directly. */
 public data class RepertoireEntry(
@@ -125,8 +116,11 @@ public interface SettingsStore {
     /**
      * `Readable(null)` is a route nobody has measured — an unmeasured latency must not read as
      * 0ms — and `Unreadable` is a stored row this build could not read. Different situations.
+     *
+     * The whole record rather than the figure, because when it was measured is part of knowing
+     * how much the figure is worth.
      */
-    public suspend fun latency(route: AudioRoute): StoredReading<InputLatency?>
+    public suspend fun latency(route: AudioRoute): StoredReading<RouteLatency?>
 
     /** Every route that has ever been measured, through the same refusal path as [latency]. */
     public suspend fun latencies(): StoredReading<List<RouteLatency>>

@@ -131,6 +131,9 @@ public class AppContainer(private val context: Context) {
 
     public val metronome: ClickMetronome = ClickMetronome(diag)
 
+    /** What each mic path costs, read from and written back to the same store Settings shows. */
+    public val routeLatencies: StoredRouteLatencies by lazy { StoredRouteLatencies(settingsStore, diag) }
+
     private val microphonePermission = MicrophonePermission {
         context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     }
@@ -148,6 +151,7 @@ public class AppContainer(private val context: Context) {
             ),
             trackerFor = { sampleRate -> YinNoteTracker(sampleRate, diag = diag) },
             tonePlayer = tonePlayer,
+            routeLatencies = routeLatencies,
             diag = diag,
         )
     }

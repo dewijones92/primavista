@@ -1,7 +1,7 @@
 ---
 title: Testing strategy and coverage map
 kind: index
-updated: 2026-08-15
+updated: 2026-08-16
 ---
 
 # Tests
@@ -34,21 +34,24 @@ Kover holds pure-JVM logic modules at 75%. `:core:audio` and `:core:database` ar
 | Module | JVM tests | Instrumented | Holds |
 |---|---|---|---|
 | `:core:score` | 166 | — | the model, the MusicXML subset, the generator's determinism, `Score.polyphony` (spec I3's predicate), part selection, passages, and whether a spec admits a piece |
-| `:core:audio` | 88 | 22 | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM; the AudioTrack and AudioRecord bridges on a device |
+| `:core:audio` | 100 | 22 | timing/pitch-mapping/envelope/noise-floor arithmetic on the JVM, which route kind a device type is, and the mic applying the figure for the path it actually opened on; the AudioTrack and AudioRecord bridges on a device |
 | `:core:notation` | 79 | — | staff geometry for both clefs, stems from font anchors, beams, leger lines, `xOf` agreeing with note placement (spec I1) |
-| `:core:practice` | 139 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5), what a piece offers to read, how far ahead the page is covered, and re-judging a session from its own report (spec I7) |
+| `:core:practice` | 150 | — | the Conductor in fake time, the judge's fold, the refusal gate, the scheduler, the stage curriculum, the placement read (spec I1, I2, I3, I5), what a piece offers to read, how far ahead the page is covered, re-judging a session from its own report (spec I7), and which latency figure applies to which audio path |
 | `:lib:pitch` | 60 | — | YIN against synthesised tones, onset separation of repeated notes, vibrato held as one note |
 | `:core:database` | 74 | 77 | codecs, row mapping and refusal-on-unreadable on the JVM; session and skill round-trips, the real v1→v2 and v3→v4 migrations and cascade delete on a device (spec I4) |
-| `tools/repertoire` | 10 | — | which pieces ship: the per-composer cap, and that an import removes what it dropped |
+| `tools/repertoire` | 20 | — | which pieces ship: the per-composer cap, and that an import removes what it dropped |
 | `:lib:common` | 12 | — | the diagnostics buffer: bounded overflow, counted hot events, a throwing snapshot degrading rather than losing the report |
-| `:app` | 105 | 5 | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, and screen logic that does not need a device |
-| **Total** | **733** | **104** | |
+| `:app` | 118 | 5 | the JVM PNG render of the corpus, the path model, the staff-pitch conversion, reading a file Dewi picked, the wire between the microphone and the stored latencies, and screen logic that does not need a device |
+| **Total** | **779** | **104** | |
 
 ## Deliberately uncovered (and why)
 
-- **Real audio latency on Dewi's phone.** Unmeasured, and no automated test can measure it — it needs
-  a loopback measurement on the device. Tracked in `../todos/measure-audio-latency.md`; until then
-  mic verdicts carry a timing bias of unknown size (see [`../spec.md`](../spec.md), *The weakness*).
+- **Real audio latency on Dewi's phone.** Still unmeasured — no automated test can measure it, because
+  the number is a property of that phone. What *is* covered now is everything around it: the app reads
+  which path a capture opened on, applies the figure stored for that path, refuses to apply another
+  path's, and offers to measure. So the remaining gap is one number rather than a whole mechanism, and
+  until Dewi runs it every mic verdict carries a stated assumption rather than a silent one
+  (`../todos/measure-audio-latency.md`, and [`../spec.md`](../spec.md), *The weakness*).
 - **Polyphonic pitch detection.** Not attempted, by decision. The test that matters is that it
   **refuses** (spec I3), not that it works.
 - **MusicXML beyond the parsed subset.** Untested because unsupported. The parser reports what it

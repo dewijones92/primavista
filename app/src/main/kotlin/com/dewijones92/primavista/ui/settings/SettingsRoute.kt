@@ -10,9 +10,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -21,10 +23,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dewijones92.primavista.PrimaVistaApp
 import com.dewijones92.primavista.database.DatabaseOpening
 import com.dewijones92.primavista.database.PracticeSettings
-import com.dewijones92.primavista.database.RouteLatency
 import com.dewijones92.primavista.database.StoredReading
 import com.dewijones92.primavista.database.map
 import com.dewijones92.primavista.di.AppContainer
+import com.dewijones92.primavista.practice.RouteLatency
 import com.dewijones92.primavista.ui.UnreadablePanel
 import kotlinx.coroutines.launch
 
@@ -55,7 +57,8 @@ public fun SettingsRoute(container: AppContainer, modifier: Modifier = Modifier)
     // Null until the row is read.
     val settings by remember(store) { store.observe() }
         .collectAsStateWithLifecycle<PracticeSettings?>(null)
-    val latencies by produceState<StoredReading<List<RouteLatency>>?>(null, store) {
+    var calibration by remember { mutableStateOf<Calibration>(Calibration.Idle) }
+    val latencies by produceState<StoredReading<List<RouteLatency>>?>(null, store, calibration) {
         value = store.latencies()
     }
     val sessions by produceState<StoredReading<SessionCount>?>(null, container) {
@@ -76,7 +79,13 @@ public fun SettingsRoute(container: AppContainer, modifier: Modifier = Modifier)
         settings = stored,
         latencies = latencies,
         storedSessions = sessions,
+        calibration = calibration,
+        micGranted = container.microphoneGranted(),
         onSettings = { scope.launch { store.save(it) } },
+        onCalibrate = {
+            calibration = Calibration.Running
+            scope.launch { calibration = Calibration.Finished(container.micSource.calibrateLatency()) }
+        },
         modifier = modifier,
     )
 }

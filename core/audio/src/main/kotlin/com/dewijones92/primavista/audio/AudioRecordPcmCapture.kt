@@ -5,6 +5,7 @@ import android.media.AudioRecord
 import android.media.AudioTimestamp
 import com.dewijones92.primavista.common.Diag
 import com.dewijones92.primavista.common.NoOpDiag
+import com.dewijones92.primavista.practice.AudioRoute
 import kotlin.math.abs
 
 /**
@@ -29,7 +30,12 @@ public class AudioRecordPcmCapture(
 ) : PcmCapture {
 
     /** The source and rate that actually opened, which is the line a report needs. */
-    public data class Route(val sourceName: String, val sampleRate: Int, val bufferFrames: Int)
+    public data class Negotiated(
+        val sourceName: String,
+        val sampleRate: Int,
+        val bufferFrames: Int,
+        val route: AudioRoute,
+    )
 
     private val negotiator = MicRouteNegotiator(diag, audioManager)
 
@@ -37,7 +43,7 @@ public class AudioRecordPcmCapture(
     private var record: AudioRecord? = null
 
     @Volatile
-    private var route: Route? = null
+    private var negotiated: Negotiated? = null
 
     @Volatile
     private var timebase: FrameTimebase = FrameTimebase(preferredSampleRates.first())
@@ -52,16 +58,16 @@ public class AudioRecordPcmCapture(
     private var everMeasured = false
     private var worstDriftFrames = 0L
 
-    override val sampleRate: Int get() = route?.sampleRate ?: preferredSampleRates.first()
+    override val sampleRate: Int get() = negotiated?.sampleRate ?: preferredSampleRates.first()
 
     public val timestampProvenance: TimestampProvenance get() = timebase.provenance
 
-    public val activeRoute: Route? get() = route
+    public val activeCapture: Negotiated? get() = negotiated
 
     override fun start(): CaptureStart {
         if (released) return refuse(CaptureStart.Refused.NoUsableConfiguration("this capture was released"))
         if (record != null) {
-            diag.event(TAG, "start ignored: already capturing on ${route?.sourceName}")
+            diag.event(TAG, "start ignored: already capturing on ${negotiated?.sourceName}")
             return started()
         }
         if (!micPermission.isGranted()) return refuse(CaptureStart.Refused.PermissionDenied)
@@ -88,7 +94,7 @@ public class AudioRecordPcmCapture(
         active.release()
         diag.event(
             TAG,
-            "stopped source=${route?.sourceName} frames=$framePosition " +
+            "stopped source=${negotiated?.sourceName} route=${negotiated?.route?.id} frames=$framePosition " +
                 "timebase=${timebase.provenance} deviceEverReported=$everMeasured " +
                 "worstDrift=${worstDriftFrames}frames",
         )
@@ -123,8 +129,9 @@ public class AudioRecordPcmCapture(
 
     private fun started(): CaptureStart.Started = CaptureStart.Started(
         sampleRate = sampleRate,
-        audioSourceName = route?.sourceName ?: UNKNOWN_SOURCE,
+        audioSourceName = negotiated?.sourceName ?: UNKNOWN_SOURCE,
         timestampProvenance = timebase.provenance,
+        route = negotiated?.route ?: AudioRoute.Unidentified,
     )
 
     private fun refuse(refusal: CaptureStart.Refused): CaptureStart.Refused {
@@ -134,7 +141,8 @@ public class AudioRecordPcmCapture(
 
     private fun install(opened: MicRouteNegotiator.Outcome.Opened) {
         record = opened.record
-        route = Route(opened.sourceName, opened.sampleRate, opened.bufferFrames)
+        val route = DeviceAudioRoutes.routeOf(opened.record.routedDevice)
+        negotiated = Negotiated(opened.sourceName, opened.sampleRate, opened.bufferFrames, route)
         framePosition = 0L
         readsSinceTimestamp = 0
         everMeasured = false
@@ -142,12 +150,12 @@ public class AudioRecordPcmCapture(
         timebase = FrameTimebase(opened.sampleRate).apply { anchorFromStart(0L, clock.nowNanos()) }
         diag.event(
             TAG,
-            "capturing source=${opened.sourceName} rate=${opened.sampleRate}Hz encoding=float mono " +
-                "buffer=${opened.bufferFrames}frames timebase=ExtrapolatedFromStart " +
-                "(until the device reports one)",
+            "capturing source=${opened.sourceName} route=${route.id} rate=${opened.sampleRate}Hz " +
+                "encoding=float mono buffer=${opened.bufferFrames}frames " +
+                "timebase=ExtrapolatedFromStart (until the device reports one)",
         )
         diag.state(TAG) {
-            "source=${route?.sourceName} rate=${route?.sampleRate}Hz frames=$framePosition " +
+            "source=${negotiated?.sourceName} route=${negotiated?.route?.id} frames=$framePosition " +
                 "timebase=${timebase.provenance} worstDrift=${worstDriftFrames}frames"
         }
     }

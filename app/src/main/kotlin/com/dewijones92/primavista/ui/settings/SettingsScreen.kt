@@ -26,9 +26,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dewijones92.primavista.database.PracticeSettings
-import com.dewijones92.primavista.database.RouteLatency
 import com.dewijones92.primavista.database.StoredReading
 import com.dewijones92.primavista.di.InputMode
+import com.dewijones92.primavista.practice.RouteLatency
 import com.dewijones92.primavista.theme.LocalNotationColors
 
 /** [atLeast] is capped by the probe limit, so [capped] is what stops "200" reading as "exactly 200". */
@@ -63,7 +63,10 @@ internal fun SettingsScreen(
     settings: PracticeSettings,
     latencies: StoredReading<List<RouteLatency>>?,
     storedSessions: StoredReading<SessionCount>?,
+    calibration: Calibration,
+    micGranted: Boolean,
     onSettings: (PracticeSettings) -> Unit,
+    onCalibrate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -86,7 +89,7 @@ internal fun SettingsScreen(
         Spacer(Modifier.height(SECTION_GAP))
         InputSection(settings, onSettings)
         Spacer(Modifier.height(SECTION_GAP))
-        LatencySection(latencies)
+        LatencySection(latencies, calibration, micGranted, onCalibrate)
         Spacer(Modifier.height(SECTION_GAP))
         HistorySection(storedSessions)
         Spacer(Modifier.height(SCREEN_PADDING))

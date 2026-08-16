@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -28,9 +29,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.dewijones92.primavista.database.RouteLatency
 import com.dewijones92.primavista.database.StoredReading
 import com.dewijones92.primavista.practice.InputLatency
+import com.dewijones92.primavista.practice.RouteLatency
 import com.dewijones92.primavista.theme.LocalNotationColors
 import com.dewijones92.primavista.theme.TabularNumeral
 import com.dewijones92.primavista.ui.UnreadableNote
@@ -136,7 +137,12 @@ internal fun SegmentedChoice(
  * rather than as zero, and a refused read is shown as a refusal — see `.claude/CODE-NOTES.md`.
  */
 @Composable
-internal fun LatencySection(latencies: StoredReading<List<RouteLatency>>?) {
+internal fun LatencySection(
+    latencies: StoredReading<List<RouteLatency>>?,
+    calibration: Calibration,
+    micGranted: Boolean,
+    onCalibrate: () -> Unit,
+) {
     SettingSection("Audio timing", "How late an input arrives, and whether anyone measured it.") {
         when {
             latencies == null -> Text(
@@ -151,8 +157,24 @@ internal fun LatencySection(latencies: StoredReading<List<RouteLatency>>?) {
             }
         }
         Spacer(Modifier.height(ROW_GAP))
+        CalibrateControl(calibration, micGranted, onCalibrate)
+        Spacer(Modifier.height(ROW_GAP))
         Text(
             text = provenanceConsequence(InputLatency.Provenance.NotApplicable),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun CalibrateControl(calibration: Calibration, micGranted: Boolean, onCalibrate: () -> Unit) {
+    val prompt = calibrationPrompt(calibration, micGranted)
+    Column(Modifier.fillMaxWidth()) {
+        Button(onClick = onCalibrate, enabled = prompt.enabled) { Text(prompt.action) }
+        Spacer(Modifier.height(BADGE_GAP))
+        Text(
+            text = prompt.detail,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

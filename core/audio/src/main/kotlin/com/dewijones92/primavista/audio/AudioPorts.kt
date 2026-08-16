@@ -1,6 +1,7 @@
 package com.dewijones92.primavista.audio
 
 import com.dewijones92.primavista.practice.AnswerSource
+import com.dewijones92.primavista.practice.AudioRoute
 import com.dewijones92.primavista.practice.NanoClock
 import com.dewijones92.primavista.score.Midi
 import com.dewijones92.primavista.score.Ticks
@@ -82,6 +83,7 @@ public sealed interface CaptureStart {
         val sampleRate: Int,
         val audioSourceName: String,
         val timestampProvenance: TimestampProvenance,
+        val route: AudioRoute,
     ) : CaptureStart
 
     public sealed interface Refused : CaptureStart {

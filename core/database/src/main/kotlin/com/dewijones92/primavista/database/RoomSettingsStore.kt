@@ -2,7 +2,9 @@ package com.dewijones92.primavista.database
 
 import com.dewijones92.primavista.common.Diag
 import com.dewijones92.primavista.common.NoOpDiag
+import com.dewijones92.primavista.practice.AudioRoute
 import com.dewijones92.primavista.practice.InputLatency
+import com.dewijones92.primavista.practice.RouteLatency
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -29,13 +31,13 @@ public class RoomSettingsStore(
         )
     }
 
-    override suspend fun latency(route: AudioRoute): StoredReading<InputLatency?> =
+    override suspend fun latency(route: AudioRoute): StoredReading<RouteLatency?> =
         diag.readOrRefuse(TAG, "the latency of route=${route.id}") {
             val stored = latencyDao.byRoute(route.id)
             if (stored == null) {
                 diag.event(TAG, "no latency stored for route=${route.id}: verdicts on it carry an unmeasured bias")
             }
-            stored?.toLatency()
+            stored?.toRouteLatency()
         }
 
     override suspend fun latencies(): StoredReading<List<RouteLatency>> =

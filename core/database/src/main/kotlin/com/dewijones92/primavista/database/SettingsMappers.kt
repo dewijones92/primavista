@@ -1,6 +1,8 @@
 package com.dewijones92.primavista.database
 
+import com.dewijones92.primavista.practice.AudioRoute
 import com.dewijones92.primavista.practice.InputLatency
+import com.dewijones92.primavista.practice.RouteLatency
 
 internal fun PracticeSettings.toEntity(): SettingsEntity = SettingsEntity(
     tempoBpm = tempoBpm,
@@ -21,4 +23,4 @@ internal fun SettingsEntity.toSettings(): PracticeSettings = PracticeSettings(
 internal fun AudioRouteLatencyEntity.toLatency(): InputLatency = InputLatency(millis, provenance)
 
 internal fun AudioRouteLatencyEntity.toRouteLatency(): RouteLatency =
-    RouteLatency(AudioRoute(route), toLatency(), measuredAtEpochMillis)
+    RouteLatency(AudioRoute.of(route), toLatency(), measuredAtEpochMillis)

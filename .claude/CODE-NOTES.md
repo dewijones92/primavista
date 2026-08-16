@@ -2982,3 +2982,86 @@ Agents implementing a module append their own `##` section and never rewrite ano
 
 - **The cap was never the binding constraint.** Raising it from 2 to 3 produced a byte-identical
   selection: `perStage = 8` is what actually limits a rung. Worth knowing before anyone tunes it.
+
+## The audio route, and which latency figure applies to it (2026-08-16)
+
+Files: `core/practice/.../AudioRoute.kt`, `core/audio/.../DeviceAudioRoutes.kt`,
+`core/audio/.../MicPitchAnswerSource.kt`, `app/.../di/StoredRouteLatencies.kt`,
+`app/.../ui/settings/Calibration.kt`.
+
+### The engine had no ignition
+
+Everything calibration needs was already built and unit-tested: `LoopbackCalibrator` played a
+click and timed it, `MicTimestampCorrection` applied the figure at the one boundary, and
+`:core:database` had an `AudioRouteLatencyEntity` table, a DAO, a store, converters and
+instrumented tests. The Settings screen even rendered the stored figures, with provenance badges
+and consequences spelled out in words.
+
+Nothing in the app ever called any of it. `calibrateLatency()` had no production caller,
+`recordLatency` was never invoked, no code anywhere constructed an `AudioRoute`, and the table the
+Settings screen displayed could only ever be empty. Every mic verdict used a hard-coded 60ms
+assumption, for ever, on every device and every path.
+
+This is worth remembering as a shape of defect, because it is invisible from every angle a test
+looks from: each piece was correct, each piece was covered, and the thing that was missing was the
+*edge between them*. The tell, in hindsight, was a display with no producer — a screen showing a
+table nothing writes to is a wire that was never connected.
+
+### Where the route comes from, and why not from `AudioManager`
+
+`AudioRecord.getRoutedDevice()` at capture-open, not `AudioManager.getDevices(GET_DEVICES_INPUTS)`.
+The latter lists what *could* be used; the former says what *is*. Since the whole point is that the
+figure must match the path the session actually ran on, the honest moment to ask is the moment the
+capture opens, which is exactly where `CaptureStart.Started` is built — so the route rides along
+with the sample rate and the timestamp provenance, and an adapter cannot forget to report it.
+
+`AudioDeviceInfo.id` is deliberately **not** part of the stored key: the platform reassigns it on
+every reconnect, so a measurement keyed by it would be orphaned the first time the headset was
+unplugged. The key is kind + product name, which survives a reconnect and a reboot.
+
+### `RouteKind` exists so Bluetooth cannot inherit the built-in figure
+
+The failure this whole area guards against is a Bluetooth headset quietly using the built-in mic's
+number. It would not crash and would not look wrong; it would just put every verdict out by well
+over a hundred milliseconds, which reads as "Dewi plays behind the beat" — a plausible enough
+diagnosis that he would believe it and try to fix a problem he does not have.
+
+Keying by route makes the wrong lookup impossible, and `RouteKind` makes the *fallback* honest too:
+an unmeasured radio path assumes far more than an unmeasured wired one. Both are still flagged
+`Assumed`, because the point of the kind-specific number is to be less wrong, not to be right.
+
+The 180ms for Bluetooth is a placeholder and should be treated as one. Real SCO and LE figures vary
+enormously by codec and device, and the only honest resolution is a measurement.
+
+### The assumed figures live on `RouteKind` and nowhere else
+
+`MicPitchAnswerSource.ASSUMED_LATENCY_MILLIS` used to hold the 60. Putting per-kind assumptions on
+`RouteKind` while leaving that constant in place would have been two homes for one decision — the
+`specTargeting` defect this repo has already shipped twice — so the constant is gone and the mic
+reads `RouteKind.BuiltIn.assumedLatencyMillis` for the pre-capture case.
+
+### Why the read/write port is one interface
+
+`RouteLatencies` has both `applied` and `record`, which looks like an interface-segregation
+violation until you notice `MicPitchAnswerSource` needs both: it applies a figure when a session
+opens and records one when calibration succeeds. Splitting it would hand the same class two
+references to the same knowledge. It lives in `:core:practice` because that is the only module both
+`:core:audio` and `:core:database` can see, and its one implementation is in `:app`, which is the
+only module that can see the microphone and the database at once.
+
+### A refusal is treated as "never measured", never as zero
+
+`StoredRouteLatencies` turns an unreadable row and a missing database into the same thing: assume,
+say why, and let the UI ask for a measurement. The alternative — surfacing a read failure as 0ms —
+would be the app claiming perfect timing precisely when it knows least.
+
+### `Calibration` is data and the wording is a pure function
+
+`calibrationPrompt` returns the button label, the sentence and whether the button is live, all from
+one place, so a live "Measure it" cannot appear next to "the microphone is off". It is a pure
+function over a sealed state, which is what makes the *failure* wording unit-testable without a
+device — and the failure wording is the part that matters, since a refusal Dewi cannot read is no
+better than a silent one.
+
+The measured figure is never printed without its confidence. A loosely located click still beats an
+assumption, so the figure is used either way, but it is presented as rough rather than as fact.

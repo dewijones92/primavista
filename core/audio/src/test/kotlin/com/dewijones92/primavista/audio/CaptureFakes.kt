@@ -2,12 +2,22 @@ package com.dewijones92.primavista.audio
 
 import com.dewijones92.primavista.pitch.MonophonicNoteTracker
 import com.dewijones92.primavista.pitch.TrackedNote
+import com.dewijones92.primavista.practice.AudioRoute
+import com.dewijones92.primavista.practice.RouteKind
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
 const val FAKE_RATE = 48_000
 const val FAKE_FRAMES_PER_READ = 1_024
+
+val FAKE_ROUTE = AudioRoute(RouteKind.BuiltIn, "fake built-in mic")
+
+/**
+ * Far enough in that the calibrator's priming reads have gone by. A click planted before them is
+ * consumed unheard, which reads as "the mic never heard it" and is a confusing way to fail.
+ */
+const val CLICK_FRAME = 12L * FAKE_FRAMES_PER_READ + 3L * FAKE_FRAMES_PER_READ + 100L
 
 /** A [PcmCapture] that hands out frames on demand and can plant a click at a known frame. */
 class FakeCapture(
@@ -20,6 +30,7 @@ class FakeCapture(
     private val clickRiseFrames: Int = 0,
     private val noiseAmplitude: Float = 0f,
     private val refusal: CaptureStart.Refused? = null,
+    private val route: AudioRoute = FAKE_ROUTE,
 ) : PcmCapture {
 
     var starts = 0
@@ -36,7 +47,7 @@ class FakeCapture(
     override fun start(): CaptureStart {
         refusal?.let { return it }
         starts++
-        return CaptureStart.Started(sampleRate, "FAKE", timestampProvenance)
+        return CaptureStart.Started(sampleRate, "FAKE", timestampProvenance, route)
     }
 
     override fun stop() {

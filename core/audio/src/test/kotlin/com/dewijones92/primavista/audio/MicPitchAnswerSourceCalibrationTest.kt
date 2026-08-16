@@ -95,7 +95,7 @@ class MicPitchAnswerSourceCalibrationTest {
 
         assertTrue("$result", result is InputLatencyResult.Unmeasurable)
         assertEquals(InputLatency.Provenance.Assumed, source.latency.provenance)
-        assertEquals(MicPitchAnswerSource.ASSUMED_LATENCY_MILLIS, source.latency.millis, 0.0)
+        assertEquals(MicPitchAnswerSource.UNTIL_A_ROUTE_IS_KNOWN.latency.millis, source.latency.millis, 0.0)
     }
 
     @Test
@@ -187,7 +187,6 @@ class MicPitchAnswerSourceCalibrationTest {
 
     private companion object {
         /** Twelve primed reads, then the click three reads into the search. */
-        const val CLICK_FRAME = 12L * FAKE_FRAMES_PER_READ + 3L * FAKE_FRAMES_PER_READ + 100L
 
         const val EXPECTED_LATENCY_MILLIS = 61.0
         const val EXPECTED_LATENCY_NANOS = 61_000_000L

@@ -4,8 +4,12 @@ import com.dewijones92.primavista.common.Diag
 import com.dewijones92.primavista.common.NoOpDiag
 import com.dewijones92.primavista.pitch.MonophonicNoteTracker
 import com.dewijones92.primavista.pitch.TrackedNote
+import com.dewijones92.primavista.practice.AppliedLatency
+import com.dewijones92.primavista.practice.AudioRoute
 import com.dewijones92.primavista.practice.InputLatency
 import com.dewijones92.primavista.practice.PlayedNote
+import com.dewijones92.primavista.practice.RouteKind
+import com.dewijones92.primavista.practice.RouteLatencies
 import com.dewijones92.primavista.score.Polyphony
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -26,6 +30,7 @@ public class MicPitchAnswerSource(
     private val capture: PcmCapture,
     private val trackerFor: (sampleRate: Int) -> MonophonicNoteTracker,
     private val tonePlayer: TonePlayer? = null,
+    private val routeLatencies: RouteLatencies = RouteLatencies.Unknown,
     private val diag: Diag = NoOpDiag,
     private val clock: MonotonicClock = SystemMonotonicClock,
     private val bufferFrames: Int = DEFAULT_BUFFER_FRAMES,
@@ -37,9 +42,12 @@ public class MicPitchAnswerSource(
     override val polyphony: Polyphony = Polyphony.Mono
 
     @Volatile
-    private var currentLatency: InputLatency = ASSUMED_LATENCY
+    private var applied: AppliedLatency = UNTIL_A_ROUTE_IS_KNOWN
 
-    override val latency: InputLatency get() = currentLatency
+    override val latency: InputLatency get() = applied.latency
+
+    /** What the current figure is worth, in the one line a report needs. */
+    public val latencyProvenance: AppliedLatency get() = applied
 
     private val listening = AtomicBoolean(false)
 
@@ -78,21 +86,21 @@ public class MicPitchAnswerSource(
      * mic's. The one exception is a refusal that never reached the audio path at all.
      */
     override suspend fun calibrateLatency(): InputLatencyResult {
-        val player = tonePlayer
-            ?: return applied(refused("no TonePlayer is attached, so no loopback is possible"))
+        val player = tonePlayer ?: return refused("no TonePlayer is attached, so no loopback is possible")
         if (!listening.compareAndSet(false, true)) {
-            diag.event(TAG, "latency left at ${currentLatency.millis}ms (${currentLatency.provenance})")
+            diag.event(TAG, "latency left at ${applied.latency.millis}ms (${applied.latency.provenance})")
             return refused("the mic is in use; calibrate before a session starts")
         }
-        val result = try {
+        val measurement = try {
             withContext(Dispatchers.IO) { calibrator.measure(player) }
         } finally {
             listening.set(false)
         }
-        return applied(result)
+        return adopt(measurement)
     }
 
     private suspend fun FlowCollector<PlayedNote>.listen(opened: CaptureStart.Started) {
+        applied = routeLatencies.applied(opened.route)
         val tracker = trackerFor(opened.sampleRate).also { it.reset() }
         if (tracker.sampleRate != opened.sampleRate) {
             diag.event(
@@ -105,7 +113,7 @@ public class MicPitchAnswerSource(
             TAG,
             "listening rate=${opened.sampleRate}Hz src=${opened.audioSourceName} " +
                 "timebase=${opened.timestampProvenance} buffer=${bufferFrames}frames " +
-                "minConf=$minConfidence lat=${currentLatency.millis}ms latSrc=${currentLatency.provenance}",
+                "minConf=$minConfidence $applied",
         )
         readInto(tracker, opened.sampleRate)
     }
@@ -144,7 +152,7 @@ public class MicPitchAnswerSource(
             onsetNanos = capture.frameTimestampNanos(note.atFrame),
             detectionDelayFrames = note.detectionDelayFrames,
             sampleRate = rate,
-            latency = currentLatency,
+            latency = applied.latency,
         )
         diag.counted(TAG, "detected")
         diag.state(TAG) {
@@ -161,16 +169,23 @@ public class MicPitchAnswerSource(
         )
     }
 
-    private fun applied(result: InputLatencyResult): InputLatencyResult {
-        currentLatency = when (result) {
-            is InputLatencyResult.Measured -> InputLatency(result.millis, InputLatency.Provenance.Measured)
-            is InputLatencyResult.Unmeasurable -> ASSUMED_LATENCY
+    /**
+     * A failed measure falls back to what the route's kind is assumed to cost rather than keeping
+     * the previous figure, which may have been another path's.
+     */
+    private suspend fun adopt(measurement: LoopbackMeasurement): InputLatencyResult {
+        val route = measurement.route
+        applied = when (val result = measurement.result) {
+            is InputLatencyResult.Measured -> {
+                val measured = InputLatency(result.millis, InputLatency.Provenance.Measured)
+                routeLatencies.record(route, measured)
+                AppliedLatency(route, measured, "just measured by loopback on this path")
+            }
+
+            is InputLatencyResult.Unmeasurable -> routeLatencies.applied(route)
         }
-        diag.event(
-            TAG,
-            "calibration -> $result; lat=${currentLatency.millis}ms src=${currentLatency.provenance}",
-        )
-        return result
+        diag.event(TAG, "calibration -> ${measurement.result}; $applied")
+        return measurement.result
     }
 
     private fun refused(reason: String): InputLatencyResult.Unmeasurable {
@@ -184,11 +199,15 @@ public class MicPitchAnswerSource(
         public const val DEFAULT_BUFFER_FRAMES: Int = 1_024
         public const val DEFAULT_MIN_CONFIDENCE: Float = 0.6f
 
-        /** Stated, logged, and never presented as measured (docs/todos/measure-audio-latency.md). */
-        public const val ASSUMED_LATENCY_MILLIS: Double = 60.0
-
-        public val ASSUMED_LATENCY: InputLatency =
-            InputLatency(ASSUMED_LATENCY_MILLIS, InputLatency.Provenance.Assumed)
+        /**
+         * Before a capture opens there is no route, so there is nothing better than the built-in
+         * mic's assumption — stated, logged, and never presented as measured.
+         */
+        public val UNTIL_A_ROUTE_IS_KNOWN: AppliedLatency = AppliedLatency(
+            route = AudioRoute.Unidentified,
+            latency = InputLatency(RouteKind.BuiltIn.assumedLatencyMillis, InputLatency.Provenance.Assumed),
+            why = "no capture has opened yet, so the path is unknown",
+        )
 
         private const val TAG = "mic"
         private const val MAX_CONSECUTIVE_EMPTY_READS = 32

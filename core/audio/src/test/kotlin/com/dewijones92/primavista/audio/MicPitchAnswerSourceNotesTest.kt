@@ -33,7 +33,7 @@ class MicPitchAnswerSourceNotesTest {
         val source = source(FakeCapture(), FakeTracker(emptyList()))
 
         assertEquals(InputLatency.Provenance.Assumed, source.latency.provenance)
-        assertEquals(MicPitchAnswerSource.ASSUMED_LATENCY_MILLIS, source.latency.millis, 0.0)
+        assertEquals(MicPitchAnswerSource.UNTIL_A_ROUTE_IS_KNOWN.latency.millis, source.latency.millis, 0.0)
     }
 
     @Test
