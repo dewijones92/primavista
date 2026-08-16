@@ -1,7 +1,7 @@
 ---
 title: Features
 kind: index
-updated: 2026-08-15
+updated: 2026-08-16
 ---
 
 # Features
@@ -16,7 +16,8 @@ that something works; if you find one that does not, the row is the bug.
 | Judging pitch and timing, note by note | shipped | `PerformanceJudge` | 60 JVM tests incl. a perfect-performance round trip and the live-vs-batch equality (spec I2) |
 | Honest refusal on material the input cannot hear | shipped | `AnswerSource.polyphony` + `Score.polyphony` | overlap-based, defined once in `:core:score` (spec I3) |
 | Tap input on a multi-touch piano keyboard | shipped | `AnswerSource` | timestamps taken from the touch event, not from when the app noticed |
-| Mic (PLAY IT) input with YIN pitch + onset detection | shipped | `AnswerSource` | 60 JVM DSP tests against synthesised tones; **latency still unmeasured** — see the todo |
+| Mic (PLAY IT) input with YIN pitch + onset detection | shipped | `AnswerSource` | 60 JVM DSP tests against synthesised tones |
+| Audio-latency calibration, per audio path | shipped | `RouteLatencies` + `LatencyPolicy` | the loopback runs from Settings and stores per route; a Bluetooth headset can never inherit the built-in mic's figure, and the path is re-read if it moves mid-session. **The number for Dewi's own phone is still unmeasured** — see the todo |
 | Metronome, driven by the Conductor and not its own timer | shipped | `Conductor` | one clock, per spec I1 |
 | Reference tone playback | shipped | `TonePlayer` | JVM envelope/mixing tests |
 | MusicXML subset parsing, loud about what it dropped | shipped | `MusicXmlParser` | hardened DOM; `DropKind` separates a hole in the music from lost decoration, and both are shown |
@@ -28,11 +29,12 @@ that something works; if you find one that does not, the row is the bug.
 | Practice history persisted across restart and update | shipped | Room stores | 74 instrumented tests incl. a real v1→v2 migration (spec I4) |
 | Per-skill results rather than one percentage | shipped | `SkillTag` on notes | skills derived once in `:core:score` |
 | Progress, repertoire and settings screens | shipped | — | verified by looking; no instrumented UI tests (a stated gap) |
+| Legible notation in both themes | shipped | `NotationColors` | an upcoming notehead must out-contrast the staff lines behind it, held by a WCAG-luminance test in both palettes rather than by eye — which is what missed it |
 | Diagnostics report, shareable with no network | shipped | `Diag` + `SessionReplay` | 12 JVM tests on the buffer; 10 more that re-judge a session **from its own report** and reach the same verdicts (spec I7) |
 | Signed APK per push, installable via Obtainium | shipped | GitHub Actions | `v0.1.<run>` releases; `/releases/latest/download/primavista.apk` verified 200 |
 | Trill, the mascot | shipped | `MascotMood` | drawn in code from one boolean-union silhouette, seven moods, scales 24dp→200dp; her mood is derived from the same tone as the score so she cannot contradict it |
 | Reading ahead: a card over the music at the playhead | shipped | `ReadingLead` | [`reading-ahead.md`](reading-ahead.md); 8 JVM tests plus a v3→v4 migration proving it arrives off |
-| Opening a MusicXML file from the phone | shipped | `PracticeRequest` carries a `Score` | [`open-any-score.md`](open-any-score.md); 9 JVM tests over the shipped corpus's own bytes; no `INTERNET` permission involved |
+| Opening a MusicXML file from the phone, and keeping it | shipped | `ScoreLibrary` | [`open-any-score.md`](open-any-score.md); a picked file is copied into the app's own storage and listed in a manifest of the same format the corpus uses, so it is an ordinary row on the shelf tomorrow. 27 JVM tests; no `INTERNET` permission involved |
 | A first run that teaches | shipped | — | Trill introduces the one idea (height on the stave is pitch) interactively, then asks for one note and names what you did. Skippable at every step |
 | Placement read | shipped | `PlacementRead` | adaptive probes climbing stages 1→2→4→7→10, stopping at the first that does not go well; seeds skills from the judge's own verdicts, so it measures rather than asks |
 | The path — ten stages | shipped | `Curriculum` | progress is "n of m skills solid" and can go down; `Curriculum.isPassed` is the only answer to whether a rung is behind you |
