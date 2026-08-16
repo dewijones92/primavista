@@ -34,9 +34,13 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.dewijones92.primavista.score.Midi
+import com.dewijones92.primavista.score.asKey
+import com.dewijones92.primavista.score.spokenName
 import com.dewijones92.primavista.theme.LocalNotationColors
 
 /**
@@ -140,6 +144,9 @@ private fun PianoKey(
             // it, and there is no way to see which key a finger is over.
             .border(width = KEY_EDGE, color = lerp(edgeColor, highlight, press), shape = shape)
             .testTag("key-${midi.number}")
+            // Named for a screen reader only: the visible keyboard is deliberately unlabelled so
+            // Dewi reads the notation rather than the letters (see KeyLabel below).
+            .semantics { contentDescription = midi.asKey().spokenName }
             .pointerInput(midi) {
                 awaitPointerEventScope {
                     while (true) {

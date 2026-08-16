@@ -3192,3 +3192,48 @@ are pure functions over the state so the wording is testable, matching `shelfSum
 The note counter shows an em-dash rather than `0` until something has been judged. That looked like
 a placeholder bug and is not: nothing has been read yet, so "0 correct" would be a claim about a
 performance that has not happened. Same principle as the two above, applied correctly already.
+
+## Three things the walkthrough asked for (2026-08-16)
+
+Files: `app/.../ui/practice/CountIn.kt`, `app/.../ui/practice/PianoKeyboard.kt`,
+`core/score/.../KeyNames.kt`, `app/.../ui/practice/PracticeScreen.kt`.
+
+### The count-in was covering the music
+
+An opaque card, centred, over the staff — so the four beats before you play, which are exactly when
+a sight-reader takes in the first bar, were spent looking at a large number instead. Real practice
+always lets you see the music during the count-in.
+
+It is a compact strip above the staff card now: counter, bird, dots and the sentence in one row,
+the numeral down from 88sp to 40sp and the counter ring from 128dp to 64dp. Everything that made it
+work is kept — the ring empties on the beat, Trill dips, the last beat goes violet and still — but
+the clef, key, time signature and first bar are all visible behind it.
+
+### The keyboard was invisible to a screen reader
+
+Twenty-four keys with a `testTag` and no `contentDescription` between them, and the only other way
+into the app is the microphone. Each key now carries a spoken name.
+
+`Midi.asKey()` lives in `:core:score` because it is domain knowledge, and it is deliberately **not**
+the inverse of `Pitch.midi`: a key has no notation behind it, so nothing can say whether it is F
+sharp or G flat. It takes the keyboard convention — naturals where the key has one, sharps
+otherwise — and the doc says out loud that nothing reading notation may use it.
+
+`spokenName` exists separately from `shortName` because a screen reader saying "C hash 4" would be
+worse than no label at all.
+
+The **visible** keyboard stays unlabelled apart from the C landmarks. That is the existing decision
+and it is right: labelling the keys would let Dewi read the label instead of the notation.
+
+### The staff card was half empty
+
+`SHEET_MARGIN_SPACES` was 9, on top of a `system.height` that `fitVertically` already computes from
+the true extent of every glyph, stem, beam and leger line. So the card was ~258dp holding ~136dp of
+music, and the notation looked lost in it. Four spaces is enough breathing room.
+
+**This does not make the notation bigger, and it cannot.** `staffSpace` is `min(heightFit,
+widthFit)` and on a single-staff exercise the width binds: showing `MIN_READ_AHEAD_SPACES = 20` of
+music beyond the pinned clef and time signature is what sets the size. Growing the glyphs means
+showing less of what is coming, which is the one thing a sight-reading trainer must not trade away.
+The spare height cannot go to the keyboard either — a grand-staff piece needs it, and taking it
+would shrink the notation on exactly the intermediate material where reading is hardest.

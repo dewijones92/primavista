@@ -95,7 +95,7 @@ public val TabularNumeral: TextStyle = TextStyle(
 public val CountInNumeral: TextStyle = TextStyle(
     fontFamily = FontFamily.Monospace,
     fontWeight = FontWeight.Bold,
-    fontSize = 88.sp,
-    lineHeight = 92.sp,
-    letterSpacing = (-4).sp,
+    fontSize = 40.sp,
+    lineHeight = 44.sp,
+    letterSpacing = (-2).sp,
 )

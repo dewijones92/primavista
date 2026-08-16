@@ -44,7 +44,8 @@ import com.dewijones92.primavista.ui.mascot.Trill
  * Trill counts you in: she dips on every beat, and goes still on the last one because you are next.
  *
  * A count-in that can only be heard is useless with the volume down, and one that shows a static
- * number gives no sense of pace. See `.claude/CODE-NOTES.md`.
+ * number gives no sense of pace. It sits **above** the music rather than over it — those beats are
+ * exactly when a sight-reader takes in the first bar. See `.claude/CODE-NOTES.md`.
  */
 @Composable
 internal fun CountInOverlay(beatsRemaining: Int, totalBeats: Int) {
@@ -59,7 +60,7 @@ internal fun CountInOverlay(beatsRemaining: Int, totalBeats: Int) {
 
     val last = beatsRemaining == 1
     val progress = pulse.value
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Card(
             shape = RoundedCornerShape(CARD_CORNER),
             colors = CardDefaults.cardColors(
@@ -68,28 +69,28 @@ internal fun CountInOverlay(beatsRemaining: Int, totalBeats: Int) {
             elevation = CardDefaults.cardElevation(defaultElevation = CARD_ELEVATION),
             modifier = Modifier.testTag("count-in"),
         ) {
-            Column(
-                Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
+            Row(
+                Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Counter(beatsRemaining, last, progress)
-                    Spacer(Modifier.width(14.dp))
-                    Trill(
-                        mood = if (last) MascotMood.Listening else MascotMood.Curious,
-                        modifier = Modifier
-                            .size(BIRD_SIZE)
-                            .graphicsLayer { translationY = BIRD_DIP * (1f - progress) },
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                BeatDots(totalBeats, beatsRemaining)
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = if (last) "Bar 1 on the next beat" else "Counting you in",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Counter(beatsRemaining, last, progress)
+                Spacer(Modifier.width(10.dp))
+                Trill(
+                    mood = if (last) MascotMood.Listening else MascotMood.Curious,
+                    modifier = Modifier
+                        .size(BIRD_SIZE)
+                        .graphicsLayer { translationY = BIRD_DIP * (1f - progress) },
                 )
+                Spacer(Modifier.width(12.dp))
+                Column(horizontalAlignment = Alignment.Start) {
+                    Text(
+                        text = if (last) "Bar 1 on the next beat" else "Counting you in",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    BeatDots(totalBeats, beatsRemaining)
+                }
             }
         }
     }
@@ -165,8 +166,8 @@ private const val ARC_START = -90f
 private const val FULL_TURN_DEGREES = 360f
 private const val BIRD_DIP = 10f
 
-private val COUNTER_SIZE = 128.dp
-private val BIRD_SIZE = 96.dp
+private val COUNTER_SIZE = 64.dp
+private val BIRD_SIZE = 44.dp
 private val CARD_CORNER = 28.dp
 private val CARD_ELEVATION = 8.dp
 private val DOT = 7.dp
