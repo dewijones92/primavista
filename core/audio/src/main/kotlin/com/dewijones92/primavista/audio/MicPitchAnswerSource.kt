@@ -31,6 +31,7 @@ public class MicPitchAnswerSource(
     private val trackerFor: (sampleRate: Int) -> MonophonicNoteTracker,
     private val tonePlayer: TonePlayer? = null,
     private val routeLatencies: RouteLatencies = RouteLatencies.Unknown,
+    private val mediaVolume: MediaVolume = MediaVolume { null },
     private val diag: Diag = NoOpDiag,
     private val clock: MonotonicClock = SystemMonotonicClock,
     private val bufferFrames: Int = DEFAULT_BUFFER_FRAMES,
@@ -51,7 +52,7 @@ public class MicPitchAnswerSource(
 
     private val listening = AtomicBoolean(false)
 
-    private val calibrator = LoopbackCalibrator(capture, clock, diag, bufferFrames)
+    private val calibrator = LoopbackCalibrator(capture, clock, diag, bufferFrames, mediaVolume)
 
     override fun notes(): Flow<PlayedNote> = flow {
         if (!listening.compareAndSet(false, true)) {

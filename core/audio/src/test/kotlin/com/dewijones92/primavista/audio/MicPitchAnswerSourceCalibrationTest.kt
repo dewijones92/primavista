@@ -113,7 +113,7 @@ class MicPitchAnswerSourceCalibrationTest {
     @Test
     fun isUnmeasurableWhenTheCaptureTimebaseIsItselfAnExtrapolation() = runBlocking {
         val capture = FakeCapture(
-            timestampProvenance = TimestampProvenance.ExtrapolatedFromStart,
+            settlesTo = TimestampProvenance.ExtrapolatedFromStart,
             clickAtFrame = CLICK_FRAME,
         )
         val source = source(capture, AnchoredTonePlayer(onsetNanos() - EXPECTED_LATENCY_NANOS))

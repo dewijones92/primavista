@@ -64,6 +64,15 @@ public interface PcmCapture : AudioResource {
     public val sampleRate: Int
 
     /**
+     * Whether frame timestamps are the device's own **right now**.
+     *
+     * Live, not the value in [CaptureStart.Started]: that is snapshotted before the first read, so
+     * it always says [TimestampProvenance.ExtrapolatedFromStart]. Anything deciding whether a
+     * timestamp can be trusted must ask here. See .claude/CODE-NOTES.md.
+     */
+    public val timestampProvenance: TimestampProvenance
+
+    /**
      * The path sound is arriving by **right now**, which is not always the one [start] opened on:
      * Android reroutes a live capture when a headset connects. [AudioRoute.Unidentified] before a
      * capture opens, and it must be re-read rather than remembered.
@@ -124,6 +133,16 @@ public data class CaptureRead(val frames: Int, val firstFrame: Long)
 public interface MicAnswerSource : AnswerSource, AudioResource {
     /** Re-measures input latency for the current audio route. Bluetooth is not the built-in mic. */
     public suspend fun calibrateLatency(): InputLatencyResult
+}
+
+/**
+ * How loud the phone is willing to play. The calibration click goes out as media, so the slider
+ * scales it: at a low setting the app's own speaker cannot reach its own microphone, and the only
+ * honest thing to do is say so rather than report that nothing was heard.
+ */
+public fun interface MediaVolume {
+    /** 0..1 of maximum, or null when it cannot be read. */
+    public fun fraction(): Double?
 }
 
 public sealed interface InputLatencyResult {

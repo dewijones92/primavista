@@ -3302,3 +3302,73 @@ it carries real contrast against the paper in absolute terms, it stays *short* o
 verdict landing is still a change, and `missed` and `upcoming` stay far enough apart that a verdict
 is not mistaken for a note simply not reached yet. It was run against the old colours first and
 fails on the dark palette with the numbers above.
+
+## Why calibration refused on a real phone, twice over (2026-08-16)
+
+Files: `core/audio/.../LoopbackCalibrator.kt`, `core/audio/.../LatencyCalibration.kt`,
+`core/audio/.../AudioPorts.kt`, `core/audio/src/test/.../CaptureFakes.kt`.
+
+Dewi pressed *Measure it* on a Pixel 7 and it refused. Yesterday this area was described as
+"the mechanism is built, only the number is missing". The mechanism could not have produced a
+number on any device.
+
+### One: the timebase check read a snapshot that can never say yes
+
+`LoopbackCalibrator.offsetFrom` refused unless
+`opened.timestampProvenance == TimestampProvenance.DeviceReported`. `opened` is the
+`CaptureStart.Started` returned by `capture.start()`, and `AudioRecordPcmCapture.started()` builds
+it one statement after `install()` sets `anchorFromStart(...)` — so the value in it is
+`ExtrapolatedFromStart`, always, on every device. It is a plain constructor `val`, an eager
+snapshot, not a getter onto the live timebase.
+
+The timebase *does* upgrade — at read 8, inside `refreshAnchor` — but into the mutable
+`FrameTimebase`, never back into the snapshot. So whenever the click *was* heard, the very next
+line refused it. **Dead on arrival, for everyone.** `timestampProvenance` is on the `PcmCapture`
+port now and is read live, at the moment the click is found.
+
+### Two: the detector rejected its own stimulus as room noise
+
+`LatencyCalibration` took its noise floor from the median magnitude of the same buffer it was
+searching, with a comment stating the assumption: "a short click barely moves it". The click was
+40ms; the analysis window is 1024 frames, which at 48kHz is 21ms. **The stimulus was 1.9× longer
+than the window looking for it.** For a tone filling a buffer the median is 0.707 of the peak, so
+the signal-to-noise ratio comes out at 1.41 against a required 8 — every buffer wholly inside the
+click is thrown away as room noise. Only a partially-filled buffer can pass, so the onset is found
+in the click's quiet *tail*: a measurement about 40ms too large. That is roughly the size of the
+quantity being measured.
+
+Two changes. The room is measured from the priming reads — the only audio certain to contain no
+click — and passed in as the reference. And the click is 10ms, so it fits inside a window.
+
+### Three: the refusal described the wrong buffer
+
+`searchForClick` overwrote `lastReason` on every one of 48 buffers, so the sentence quoted the
+48th — long after the click, containing only room noise. Dewi's phone said
+`peak 0.011 never reached the audible floor 0.02`, and that 0.011 was **his room**, not the click.
+It reports the loudest buffer now, plus the measured room and the media volume.
+
+### Four: nothing knew about the volume slider
+
+The click plays as `USAGE_MEDIA`, so the media slider scales it, and a grep for
+`getStreamVolume` across the repo returned nothing. His phone was at 9/25. A refusal that does not
+mention that sends the reader to inspect the app when the fix is one button on the side of the
+phone. Every refusal now names the volume and says to turn it up below 70%.
+
+### Why the suite was green over all of it
+
+**`FakeCapture` was more capable than the adapter it stood for.** It reported `DeviceReported`
+from the very first call — a thing `AudioRecordPcmCapture` cannot do — and planted a one-sample
+impulse into a buffer of exact zeros, so the noise floor was 0 and the SNR gate was skipped by its
+own `noiseFloor > 0f` guard. Nine passing tests, none of which had ever seen the algorithm meet a
+click that sounds.
+
+The fake now models the adapter: extrapolated at start, upgrading after a set number of reads, and
+planting a click of a chosen length as a wave rather than a spike. Each of the three fixes was
+reverted individually to confirm its test fails — and the first attempt at the room-noise test
+**passed against the broken code**, because a click at 47% occupancy does not reproduce the
+failure and asserting `is Measured` accepted an onset found 40ms late. Asserting the *figure*
+rather than the presence of one is what made it a real gate: `expected 45.0 but was 85.58`.
+
+The lesson is narrower than "write more tests". It is: **a test double that cannot fail the way
+the real thing fails is not covering the real thing.** When a fake takes a parameter the adapter
+cannot vary, that parameter is a lie.

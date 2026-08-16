@@ -60,7 +60,7 @@ public class AudioRecordPcmCapture(
 
     override val sampleRate: Int get() = negotiated?.sampleRate ?: preferredSampleRates.first()
 
-    public val timestampProvenance: TimestampProvenance get() = timebase.provenance
+    override val timestampProvenance: TimestampProvenance get() = timebase.provenance
 
     public val activeCapture: Negotiated? get() = negotiated
 

@@ -28,9 +28,15 @@ public sealed interface ClickSearch {
  * Finds the loopback click in a captured buffer, or refuses. See .claude/CODE-NOTES.md.
  */
 public object LatencyCalibration {
+    /**
+     * [roomNoise] is the floor measured **before** any sound was made. Pass [UNKNOWN_ROOM_NOISE] to
+     * fall back to the in-buffer median, which is only valid for a click far shorter than the
+     * buffer — see .claude/CODE-NOTES.md for the failure that taught us the difference.
+     */
     public fun findClick(
         pcm: FloatArray,
         frames: Int,
+        roomNoise: Float = UNKNOWN_ROOM_NOISE,
         thresholdRatio: Double = DEFAULT_THRESHOLD_RATIO,
         minimumPeak: Float = DEFAULT_MINIMUM_PEAK,
         requiredPeakToNoise: Double = DEFAULT_REQUIRED_PEAK_TO_NOISE,
@@ -49,7 +55,7 @@ public object LatencyCalibration {
                 peakFrame = index
             }
         }
-        val noiseFloor = noiseFloorOf(pcm, limit)
+        val noiseFloor = if (roomNoise > UNKNOWN_ROOM_NOISE) roomNoise else noiseFloorOf(pcm, limit)
         refusalFor(peak, noiseFloor, minimumPeak, requiredPeakToNoise)?.let { return ClickSearch.NotFound(it) }
 
         val threshold = noiseFloor + (peak - noiseFloor) * thresholdRatio.toFloat()
@@ -57,12 +63,19 @@ public object LatencyCalibration {
         return ClickSearch.Found(onset, peakFrame, peak, noiseFloor)
     }
 
-    /** Median magnitude: a short click barely moves it, so it survives having the click in frame. */
-    private fun noiseFloorOf(pcm: FloatArray, limit: Int): Float {
+    /**
+     * The room, measured from audio captured before anything was played. This is the honest
+     * reference: a median taken from the same buffer the click is in rises with the click.
+     */
+    public fun roomNoiseOf(pcm: FloatArray, frames: Int): Float {
+        val limit = minOf(frames, pcm.size)
+        if (limit <= 0) return UNKNOWN_ROOM_NOISE
         val magnitudes = FloatArray(limit) { abs(pcm[it]) }
         magnitudes.sort()
         return magnitudes[limit / 2]
     }
+
+    private fun noiseFloorOf(pcm: FloatArray, limit: Int): Float = roomNoiseOf(pcm, limit)
 
     private fun refusalFor(
         peak: Float,
@@ -79,8 +92,18 @@ public object LatencyCalibration {
         else -> null
     }
 
+    /** No measurement of the room, so the in-buffer median is all there is. */
+    public const val UNKNOWN_ROOM_NOISE: Float = 0f
+
     public const val DEFAULT_THRESHOLD_RATIO: Double = 0.25
-    public const val DEFAULT_MINIMUM_PEAK: Float = 0.02f
+
+    /**
+     * A phone's own speaker reaches its own microphone quietly. Dewi's Pixel 7 at 9/25 media
+     * volume returned a peak of 0.011, and the old floor of 0.02 refused it as inaudible. The
+     * signal-to-noise ratio below is the real discriminator; this only rules out digital silence,
+     * which the emulator produces at 6e-5.
+     */
+    public const val DEFAULT_MINIMUM_PEAK: Float = 0.002f
 
     /** Roughly 18dB. Below it, ambient noise is indistinguishable from a quiet click. */
     public const val DEFAULT_REQUIRED_PEAK_TO_NOISE: Double = 8.0

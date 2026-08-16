@@ -7,6 +7,7 @@ import android.media.AudioManager
 import com.dewijones92.primavista.audio.AudioRecordPcmCapture
 import com.dewijones92.primavista.audio.AudioTrackTonePlayer
 import com.dewijones92.primavista.audio.ClickMetronome
+import com.dewijones92.primavista.audio.MediaVolume
 import com.dewijones92.primavista.audio.MicPitchAnswerSource
 import com.dewijones92.primavista.audio.MicrophonePermission
 import com.dewijones92.primavista.audio.SystemMonotonicClock
@@ -140,6 +141,14 @@ public class AppContainer(private val context: Context) {
     /** What each mic path costs, read from and written back to the same store Settings shows. */
     public val routeLatencies: StoredRouteLatencies by lazy { StoredRouteLatencies(settingsStore, diag) }
 
+    /** The slider the calibration click is scaled by; named in a refusal so it can be acted on. */
+    private val systemMediaVolume = MediaVolume {
+        context.getSystemService(AudioManager::class.java)?.let { audio ->
+            val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            if (max <= 0) null else audio.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble() / max
+        }
+    }
+
     private val microphonePermission = MicrophonePermission {
         context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     }
@@ -158,6 +167,7 @@ public class AppContainer(private val context: Context) {
             trackerFor = { sampleRate -> YinNoteTracker(sampleRate, diag = diag) },
             tonePlayer = tonePlayer,
             routeLatencies = routeLatencies,
+            mediaVolume = systemMediaVolume,
             diag = diag,
         )
     }

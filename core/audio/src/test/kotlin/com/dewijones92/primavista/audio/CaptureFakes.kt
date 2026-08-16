@@ -13,6 +13,9 @@ const val FAKE_FRAMES_PER_READ = 1_024
 
 val FAKE_ROUTE = AudioRoute(RouteKind.BuiltIn, "fake built-in mic")
 
+/** About 2kHz at 48kHz, which is roughly the calibration click's own pitch. */
+const val TONE_RADIANS_PER_FRAME = 0.26
+
 /**
  * Far enough in that the calibrator's priming reads have gone by. A click planted before them is
  * consumed unheard, which reads as "the mic never heard it" and is a confusing way to fail.
@@ -24,10 +27,13 @@ class FakeCapture(
     override val sampleRate: Int = FAKE_RATE,
     private val framesPerRead: Int = FAKE_FRAMES_PER_READ,
     private val maxReads: Int = Int.MAX_VALUE,
-    private val timestampProvenance: TimestampProvenance = TimestampProvenance.DeviceReported,
+    private val settlesTo: TimestampProvenance = TimestampProvenance.DeviceReported,
+    private val settlesAfterReads: Int = 0,
     var clickAtFrame: Long? = null,
     private val clickAmplitude: Float = 0.8f,
     private val clickRiseFrames: Int = 0,
+    /** How long the click sounds for. The default is an impulse; real clicks last milliseconds. */
+    private val clickFrames: Int = 1,
     private val noiseAmplitude: Float = 0f,
     private val refusal: CaptureStart.Refused? = null,
     private val route: AudioRoute = FAKE_ROUTE,
@@ -38,6 +44,16 @@ class FakeCapture(
     /** Android reroutes a live capture when a headset connects, so the fake can too. */
     override var currentRoute: AudioRoute = route
         private set
+
+    /**
+     * Modelled on the real adapter: a capture opens on an extrapolated timebase and only upgrades
+     * once the device has reported a timestamp, several reads in. The fake used to claim
+     * [TimestampProvenance.DeviceReported] from the very first call — a thing
+     * `AudioRecordPcmCapture` cannot do — which is how nine passing tests covered a feature that
+     * refused on every real device.
+     */
+    override val timestampProvenance: TimestampProvenance
+        get() = if (reads >= settlesAfterReads) settlesTo else TimestampProvenance.ExtrapolatedFromStart
 
     var starts = 0
         private set
@@ -78,11 +94,14 @@ class FakeCapture(
         }
         clickAtFrame?.let { click ->
             val start = (click - first).toInt()
-            for (step in 0..clickRiseFrames) {
+            for (step in 0 until maxOf(clickFrames, clickRiseFrames + 1)) {
                 val offset = start + step
-                if (offset in 0 until frames) {
-                    into[offset] = clickAmplitude * (step + 1) / (clickRiseFrames + 1)
-                }
+                if (offset !in 0 until frames) continue
+                val rising = if (step <= clickRiseFrames) (step + 1f) / (clickRiseFrames + 1) else 1f
+                // A sounding click is a wave, not a plateau: its median magnitude is what a
+                // detector using the in-buffer median mistakes for the room.
+                val wave = kotlin.math.sin(step * TONE_RADIANS_PER_FRAME).toFloat()
+                into[offset] = clickAmplitude * rising * (if (clickFrames > 1) wave else 1f)
             }
         }
         position = first + framesPerRead
